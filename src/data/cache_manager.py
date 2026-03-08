@@ -3,7 +3,7 @@
 import hashlib
 import logging
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal
 
 import pandas as pd
 import polars as pl
@@ -13,7 +13,7 @@ from src.config.settings import get_settings
 logger = logging.getLogger(__name__)
 
 
-ParquetCompression = Literal["snappy", "zstd", "lz4", "gzip", "none"]
+ParquetCompression = Literal["snappy", "zstd", "lz4", "gzip"] | None
 
 
 class CacheManager:
@@ -22,20 +22,23 @@ class CacheManager:
     def __init__(
         self,
         cache_dir: Path | None = None,
-        compression: ParquetCompression = "snappy",
+        compression: ParquetCompression | str = "snappy",
     ):
         """Initialize cache manager.
 
         Args:
             cache_dir: Directory for cache files. Uses settings default if None.
-            compression: Compression algorithm (snappy, zstd, lz4, gzip)
+            compression: Compression algorithm (snappy, zstd, lz4, gzip, none)
         """
         if cache_dir is None:
             settings = get_settings()
             cache_dir = settings.cache_dir
 
         self.cache_dir = Path(cache_dir)
-        self.compression: ParquetCompression = compression
+        # Convert "none" string to None for pandas compatibility
+        self.compression: ParquetCompression = (
+            None if compression == "none" else compression  # type: ignore[assignment]
+        )
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_cache_path(self, key: str) -> Path:
@@ -45,7 +48,7 @@ class CacheManager:
             safe_key = safe_key[:50] + "_" + hashlib.md5(key.encode()).hexdigest()[:16]
         return self.cache_dir / f"{safe_key}.parquet"
 
-    def get(self, key: str) -> pd.DataFrame | pl.DataFrame | None:
+    def get(self, key: str) -> pd.DataFrame | None:
         """Load DataFrame from cache if exists.
 
         Args:
@@ -80,12 +83,11 @@ class CacheManager:
         cache_path = self._get_cache_path(key)
 
         try:
-            compression = cast(ParquetCompression, self.compression)
             if isinstance(df, pd.DataFrame):
-                df.to_parquet(cache_path, compression=compression)
+                df.to_parquet(cache_path, compression=self.compression)
             elif isinstance(df, pl.DataFrame):
                 # Convert to pandas for consistent format
-                df.to_pandas().to_parquet(cache_path, compression=compression)
+                df.to_pandas().to_parquet(cache_path, compression=self.compression)
             else:
                 raise TypeError(f"Unsupported DataFrame type: {type(df)}")
             logger.info(f"Cached data to {cache_path}")
@@ -118,7 +120,7 @@ class CacheManager:
         """
         count = 0
         # Validate pattern to prevent path traversal
-        if ".." in pattern or "/" in pattern:
+        if ".." in pattern or "/" in pattern or "\\" in pattern or "\x00" in pattern:
             logger.warning(f"Invalid pattern contains path traversal characters: {pattern}")
             return 0
         for path in self.cache_dir.glob(f"{pattern}*.parquet"):

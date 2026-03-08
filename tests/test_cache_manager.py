@@ -103,3 +103,96 @@ def test_cache_polars_to_pandas():
         loaded = cache.get("polars_test")
         assert isinstance(loaded, pd.DataFrame)
         assert list(loaded.columns) == ["a", "b"]
+
+
+def test_cache_long_key_sanitization():
+    """Test that keys > 100 chars are hashed."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cache = CacheManager(cache_dir=Path(tmpdir))
+
+        # Create a key > 100 chars
+        long_key = "a" * 150
+        df = pd.DataFrame({"col": [1, 2, 3]})
+
+        cache.set(long_key, df)
+
+        # Should still be retrievable
+        loaded = cache.get(long_key)
+        assert loaded is not None
+        assert len(loaded) == 3
+
+        # Verify file was created with hashed name (should contain underscore)
+        cache_files = list(Path(tmpdir).glob("*.parquet"))
+        assert len(cache_files) == 1
+        # The filename should be shortened with hash
+        assert "_" in cache_files[0].stem
+        assert len(cache_files[0].stem) <= 100
+
+
+def test_cache_path_traversal_protection():
+    """Test that path traversal patterns are rejected."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cache = CacheManager(cache_dir=Path(tmpdir))
+
+        # Test various path traversal patterns
+        traversal_patterns = [
+            "../etc/passwd",
+            "subdir/../../../etc",
+            "..",
+            "foo/bar/baz",
+            "foo\\bar",
+            "file\x00name",
+        ]
+
+        df = pd.DataFrame({"col": [1, 2, 3]})
+        cache.set("safe_key", df)
+
+        for pattern in traversal_patterns:
+            # invalidate_pattern should reject these and return 0
+            result = cache.invalidate_pattern(pattern)
+            assert result == 0, f"Pattern '{pattern}' should be rejected but returned {result}"
+
+        # Verify the safe key still exists
+        assert cache.exists("safe_key") is True
+
+
+def test_cache_delete_method():
+    """Test delete method removes cached items."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cache = CacheManager(cache_dir=Path(tmpdir))
+
+        df = pd.DataFrame({"col": [1, 2, 3]})
+        cache.set("to_delete", df)
+
+        assert cache.exists("to_delete") is True
+
+        cache.delete("to_delete")
+
+        assert cache.exists("to_delete") is False
+        assert cache.get("to_delete") is None
+
+
+def test_cache_clear_method():
+    """Test clear method removes all cached items."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cache = CacheManager(cache_dir=Path(tmpdir))
+
+        df1 = pd.DataFrame({"col": [1, 2, 3]})
+        df2 = pd.DataFrame({"col": [4, 5, 6]})
+
+        cache.set("key1", df1)
+        cache.set("key2", df2)
+
+        assert cache.exists("key1") is True
+        assert cache.exists("key2") is True
+
+        cache.clear()
+
+        assert cache.exists("key1") is False
+        assert cache.exists("key2") is False
+        assert cache.get("key1") is None
+        assert cache.get("key2") is None
+
+        # Cache directory should be empty (no parquet files)
+        cache_files = list(Path(tmpdir).glob("*.parquet"))
+        assert len(cache_files) == 0
