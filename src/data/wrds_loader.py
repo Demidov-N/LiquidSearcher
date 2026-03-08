@@ -177,16 +177,35 @@ def _generate_mock_ohlcv(
     end_date: datetime,
     seed: int = 42,
 ) -> pd.DataFrame:
-    """Generate mock OHLCV data for testing/development."""
+    """Generate mock OHLCV data for testing/development.
+
+    Also generates mock fundamental data to support feature engineering.
+    """
     np.random.seed(seed)
     # Generate business days
     dates = pd.date_range(start=start_date, end=end_date, freq="B")
 
     data_rows = []
+
+    # Generate market returns (same for all stocks)
+    market_returns = np.random.normal(0, 0.015, len(dates))
+
     for symbol in symbols:
         base_price = np.random.uniform(10, 500)
-        returns = np.random.normal(0, 0.02, len(dates))
+        # Stock returns correlated with market + idiosyncratic noise
+        idiosyncratic = np.random.normal(0, 0.015, len(dates))
+        returns = 0.7 * market_returns + idiosyncratic  # 0.7 market correlation
         prices = base_price * np.exp(np.cumsum(returns))
+
+        # Generate mock fundamental data (constant per stock for simplicity)
+        market_beta = np.random.uniform(0.5, 1.5)
+        downside_beta = market_beta * np.random.uniform(0.8, 1.2)
+        pe_ratio = np.random.uniform(10, 30)
+        pb_ratio = np.random.uniform(1, 5)
+        roe = np.random.uniform(0.05, 0.25)
+        market_cap = prices[0] * np.random.uniform(1e8, 1e10)  # Shares outstanding * price
+        gsector = np.random.choice([10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60])
+        ggroup = gsector * 100 + np.random.randint(0, 99)
 
         for i, date in enumerate(dates):
             data_rows.append(
@@ -200,6 +219,16 @@ def _generate_mock_ohlcv(
                     "volume": int(np.random.lognormal(10, 1.5)),
                     "adj_close": prices[i],
                     "return": returns[i],
+                    "market_return": market_returns[i],  # Market returns for beta computation
+                    # Mock fundamental data (preserved as starting values)
+                    "market_beta_60d": market_beta,
+                    "downside_beta_60d": downside_beta,
+                    "pe_ratio": pe_ratio,
+                    "pb_ratio": pb_ratio,
+                    "roe": roe,
+                    "market_cap": market_cap,
+                    "gsector": gsector,
+                    "ggroup": ggroup,
                 }
             )
 

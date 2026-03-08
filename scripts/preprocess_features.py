@@ -12,6 +12,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from src.data.cache_manager import CacheManager
+from src.data.credentials import validate_and_exit
 from src.data.wrds_loader import (
     load_fundamental,
     load_ohlcv,
@@ -40,8 +41,16 @@ def main():
         default=None,
         help="Specific symbols to process",
     )
+    parser.add_argument(
+        "--use-mock",
+        action="store_true",
+        help="Use mock data instead of WRDS (for testing only)",
+    )
 
     args = parser.parse_args()
+
+    # Validate WRDS credentials unless using mock data
+    validate_and_exit(use_mock=args.use_mock)
 
     # Initialize components
     cache_manager = CacheManager(cache_dir=args.output_dir)
@@ -70,6 +79,7 @@ def main():
                 symbols=[symbol],
                 start_date=start_date,
                 end_date=end_date,
+                use_mock=args.use_mock,
             )
 
             # Load fundamental data
@@ -77,6 +87,7 @@ def main():
                 symbols=[symbol],
                 start_date=start_date,
                 end_date=end_date,
+                use_mock=args.use_mock,
             )
 
             # Combine into single dataframe

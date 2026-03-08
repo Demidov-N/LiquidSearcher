@@ -64,3 +64,12 @@ models/*.pt
 models/*.pth
 models/*.pkl
 models/checkpoints/
+
+# Presentation materials (not for GitHub)
+presentation_slides_guide.md
+presentation_script.md
+*.pptx
+*.key
+*.pdf
+presentations/
+presentations_*/

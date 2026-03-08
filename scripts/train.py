@@ -107,23 +107,30 @@ def main():
     # Use CrossRegimeValidator for proper date ranges
     validator = CrossRegimeValidator()
 
-    # Check if we have data for the full date ranges or just test data
+    # Check for unified feature file
     feature_dir = Path(args.feature_dir)
-    available_files = list(feature_dir.glob("*_features.parquet"))
+    unified_file = feature_dir / "all_features.parquet"
 
-    if available_files:
-        # Load first file to check date range
-        sample_df = pd.read_parquet(available_files[0], columns=["date"])
-        min_date = sample_df["date"].min()
-        max_date = sample_df["date"].max()
+    if unified_file.exists():
+        # Load unified file
+        sample_df = pd.read_parquet(unified_file, columns=["date"])
+        min_date = pd.to_datetime(sample_df["date"].min())
+        max_date = pd.to_datetime(sample_df["date"].max())
+        print(f"Using unified feature file: {unified_file}")
 
         # If data only covers 2023 (test mode), adjust validation fold dates
         if min_date >= pd.Timestamp("2023-01-01") and max_date <= pd.Timestamp("2023-12-31"):
-            # Test mode: split 2023 data (Jan-Sep train, Oct-Dec val)
-            train_start = pd.Timestamp("2023-01-01")
-            train_end = pd.Timestamp("2023-09-30")
-            val_start = pd.Timestamp("2023-10-01")
-            val_end = pd.Timestamp("2023-12-31")
+            # Test mode: split 2023 data for quick testing
+            # FeatureDataset uses window_size=60 and adds it to start date
+            # So we need to request dates EARLIER by 60 days to get the samples we want
+            # Also mom_12_1m needs 252+21=273 days, so we only get valid samples at the very end
+            # Training samples: Dec 20-23 (need to request Oct 21 - Dec 23)
+            # Validation samples: Dec 24-27 (need to request Oct 25 - Dec 27)
+            window_offset = pd.Timedelta(days=60)
+            train_start = pd.Timestamp("2023-12-20") - window_offset
+            train_end = pd.Timestamp("2023-12-23")
+            val_start = pd.Timestamp("2023-12-24") - window_offset
+            val_end = pd.Timestamp("2023-12-27")
         else:
             # Full mode: use CrossRegimeValidator dates
             val_fold = validator.get_val_fold(args.fold)
@@ -132,7 +139,10 @@ def main():
             val_start = pd.Timestamp(val_fold.start)
             val_end = pd.Timestamp(val_fold.end)
     else:
-        raise ValueError(f"No feature files found in {args.feature_dir}")
+        raise ValueError(
+            f"Unified feature file not found: {unified_file}\n"
+            f"Run: python -m scripts.preprocess_unified --symbols <list>"
+        )
 
     print(f"\nTraining: {train_start} → {train_end}")
     print(f"Validation: {val_start} → {val_end}")

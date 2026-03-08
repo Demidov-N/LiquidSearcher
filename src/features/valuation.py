@@ -34,12 +34,17 @@ class ValuationFeatures(FeatureGroup):
             df: Input dataframe with columns:
                 - symbol: Stock identifier
                 - date: Date column
-                - price: Stock price
+                - price: Stock price (or close)
                 - shares_outstanding: Number of shares outstanding
                 - eps: Earnings per share
                 - book_value_per_share: Book value per share
                 - net_income: Net income
                 - equity: Shareholder equity
+                OR pre-computed values:
+                - market_cap: Market capitalization
+                - pe_ratio: P/E ratio
+                - pb_ratio: P/B ratio
+                - roe: Return on equity
 
         Returns:
             DataFrame with valuation features added.
@@ -64,12 +69,22 @@ class ValuationFeatures(FeatureGroup):
         """Compute log market capitalization: ln(price × shares_outstanding)."""
         result = df.copy()
 
-        if "price" not in result.columns or "shares_outstanding" not in result.columns:
+        # If market_cap already exists (from fundamentals), use it directly
+        if "market_cap" in result.columns and not result["market_cap"].isna().all():
+            mktcap = result["market_cap"].replace(0, np.nan)
+            result["log_mktcap"] = np.log(mktcap)
+            return result
+
+        # Check if we can compute from price and shares_outstanding
+        # Use 'close' as price if 'price' column doesn't exist
+        price_col = "price" if "price" in result.columns else "close"
+
+        if price_col not in result.columns or "shares_outstanding" not in result.columns:
             result["log_mktcap"] = np.nan
             return result
 
         # Market cap = price × shares_outstanding
-        mktcap = result["price"] * result["shares_outstanding"]
+        mktcap = result[price_col] * result["shares_outstanding"]
 
         # Log transform (handle negative or zero values)
         mktcap = mktcap.replace(0, np.nan)
@@ -81,18 +96,30 @@ class ValuationFeatures(FeatureGroup):
         """Compute P/E ratio: Price / EPS (winsorize [2%, 98%] → rank [0,1])."""
         result = df.copy()
 
-        if "price" not in result.columns or "eps" not in result.columns:
+        # If pe_ratio already exists (from fundamentals), preserve it
+        if "pe_ratio" in result.columns and not result["pe_ratio"].isna().all():
+            # Already have valid pe_ratio values, normalize them
+            result["pe_ratio_raw"] = result["pe_ratio"]
+        elif "price" not in result.columns and "close" not in result.columns:
+            # Can't compute without price
             result["pe_ratio"] = np.nan
             return result
+        elif "eps" not in result.columns:
+            # Can't compute without EPS
+            result["pe_ratio"] = np.nan
+            return result
+        else:
+            # Use 'close' as price if 'price' column doesn't exist
+            price_col = "price" if "price" in result.columns else "close"
 
-        # Compute raw P/E ratio
-        pe = result["price"] / result["eps"]
+            # Compute raw P/E ratio
+            pe = result[price_col] / result["eps"]
 
-        # Handle division by zero and negative values
-        pe = pe.replace([np.inf, -np.inf], np.nan)
-        pe = pe.where(pe > 0, np.nan)
+            # Handle division by zero and negative values
+            pe = pe.replace([np.inf, -np.inf], np.nan)
+            pe = pe.where(pe > 0, np.nan)
 
-        result["pe_ratio_raw"] = pe
+            result["pe_ratio_raw"] = pe
 
         # Winsorize at 2% and 98% quantiles
         result = self._winsorize(result, ["pe_ratio_raw"], 0.02, 0.98)
@@ -106,12 +133,24 @@ class ValuationFeatures(FeatureGroup):
         """Compute P/B ratio: Price / Book_value (log → z-score)."""
         result = df.copy()
 
-        if "price" not in result.columns or "book_value_per_share" not in result.columns:
+        # If pb_ratio already exists (from fundamentals), use it directly
+        if "pb_ratio" in result.columns and not result["pb_ratio"].isna().all():
+            # Already have valid pb_ratio values, just return them
+            return result
+
+        # Check if we can compute from components
+        has_price = "price" in result.columns or "close" in result.columns
+        has_book = "book_value_per_share" in result.columns
+
+        if not has_price or not has_book:
             result["pb_ratio"] = np.nan
             return result
 
+        # Compute from components
+        price_col = "price" if "price" in result.columns else "close"
+
         # Compute raw P/B ratio
-        pb = result["price"] / result["book_value_per_share"]
+        pb = result[price_col] / result["book_value_per_share"]
 
         # Handle division by zero and negative values
         pb = pb.replace([np.inf, -np.inf], np.nan)
@@ -132,11 +171,17 @@ class ValuationFeatures(FeatureGroup):
         """Compute ROE: Net_income / Equity (winsorize → z-score)."""
         result = df.copy()
 
+        # If roe already exists (from fundamentals), use it directly
+        if "roe" in result.columns and not result["roe"].isna().all():
+            # Already have valid roe values, just return them
+            return result
+
+        # Check if we can compute from components
         if "net_income" not in result.columns or "equity" not in result.columns:
             result["roe"] = np.nan
             return result
 
-        # Compute raw ROE
+        # Compute from components
         roe = result["net_income"] / result["equity"]
 
         # Handle division by zero
