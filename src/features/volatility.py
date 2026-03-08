@@ -1,4 +1,4 @@
-"""G2 volatility features (realized and idiosyncratic volatility)."""
+"""Volatility features (realized and idiosyncratic volatility)."""
 
 import numpy as np
 import pandas as pd
@@ -7,16 +7,16 @@ from scipy import stats
 from src.features.base import FeatureGroup
 
 
-class G2VolatilityFeatures(FeatureGroup):
-    """G2 feature group: volatility metrics.
+class VolatilityFeatures(FeatureGroup):
+    """Volatility feature group: volatility metrics.
 
     Computes realized volatility (20d and 60d), idiosyncratic volatility
     (residual after beta regression), and volatility of volatility.
     """
 
     def __init__(self) -> None:
-        """Initialize G2 volatility features."""
-        self.name = "G2_volatility"
+        """Initialize volatility features."""
+        self.name = "volatility"
         self._feature_names = [
             "realized_vol_20d",
             "realized_vol_60d",
@@ -29,7 +29,7 @@ class G2VolatilityFeatures(FeatureGroup):
         return self._feature_names.copy()
 
     def compute(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Compute G2 volatility features.
+        """Compute volatility features.
 
         Args:
             df: Input dataframe with columns:
@@ -39,7 +39,7 @@ class G2VolatilityFeatures(FeatureGroup):
                 - market_return: Market returns (for idiosyncratic vol)
 
         Returns:
-            DataFrame with G2 volatility features added.
+            DataFrame with volatility features added.
         """
         result = df.copy()
 

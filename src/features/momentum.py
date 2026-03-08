@@ -1,4 +1,4 @@
-"""G3 momentum features (price momentum and trend indicators)."""
+"""Momentum features (price momentum and trend indicators)."""
 
 import numpy as np
 import pandas as pd
@@ -6,8 +6,8 @@ import pandas as pd
 from src.features.base import FeatureGroup
 
 
-class G3MomentumFeatures(FeatureGroup):
-    """G3 feature group: momentum indicators.
+class MomentumFeatures(FeatureGroup):
+    """Momentum feature group: momentum indicators.
 
     Computes classic momentum measures including:
     - mom_1m: 1-month price momentum (21 trading days)
@@ -20,8 +20,8 @@ class G3MomentumFeatures(FeatureGroup):
     """
 
     def __init__(self) -> None:
-        """Initialize G3 momentum features."""
-        self.name = "G3_momentum"
+        """Initialize momentum features."""
+        self.name = "momentum"
         self._feature_names = [
             "mom_1m",
             "mom_3m",
@@ -35,7 +35,7 @@ class G3MomentumFeatures(FeatureGroup):
         return self._feature_names.copy()
 
     def compute(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Compute G3 momentum features.
+        """Compute momentum features.
 
         Args:
             df: Input dataframe with columns:
@@ -44,7 +44,7 @@ class G3MomentumFeatures(FeatureGroup):
                 - close: Closing price
 
         Returns:
-            DataFrame with G3 momentum features added.
+            DataFrame with momentum features added.
         """
         result = df.copy()
 

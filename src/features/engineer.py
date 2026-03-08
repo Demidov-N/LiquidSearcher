@@ -1,47 +1,69 @@
-"""Unified feature engineer orchestrating G1-G6 computation."""
+"""Unified feature engineer with configurable feature groups."""
 
 import pandas as pd
 
 from src.data.cache_manager import CacheManager
-from src.features.base import FeatureRegistry
-from src.features.g1_risk import G1RiskFeatures
-from src.features.g2_volatility import G2VolatilityFeatures
-from src.features.g3_momentum import G3MomentumFeatures
-from src.features.g4_valuation import G4ValuationFeatures
-from src.features.g5_ohlcv import G5OHLCVFeatures
-from src.features.g6_sector import G6SectorFeatures
+from src.features.base import FeatureRegistry, FeatureGroup
+from src.features.market_risk import MarketRiskFeatures
+from src.features.momentum import MomentumFeatures
+from src.features.sector import SectorFeatures
+from src.features.technical import TechnicalFeatures
+from src.features.valuation import ValuationFeatures
+from src.features.volatility import VolatilityFeatures
 
 
 class FeatureEngineer:
-    """Orchestrates computation of all G1-G6 feature groups.
+    """Orchestrates computation of feature groups with flexible configuration.
 
-    This class provides a unified interface for computing all feature groups
+    This class provides a unified interface for computing feature groups
     with caching support for efficient repeated computation.
 
     Attributes:
-        registry: FeatureRegistry containing all registered feature groups
+        registry: FeatureRegistry containing registered feature groups
         cache_manager: Optional CacheManager for parquet caching
+        enabled_groups: List of enabled feature group names
     """
 
-    def __init__(self, cache_manager: CacheManager | None = None) -> None:
-        """Initialize feature engineer with all G1-G6 groups.
+    # Available feature group classes with their default names
+    AVAILABLE_GROUPS: dict[str, type[FeatureGroup]] = {
+        "market_risk": MarketRiskFeatures,
+        "volatility": VolatilityFeatures,
+        "momentum": MomentumFeatures,
+        "valuation": ValuationFeatures,
+        "technical": TechnicalFeatures,
+        "sector": SectorFeatures,
+    }
+
+    def __init__(
+        self,
+        cache_manager: CacheManager | None = None,
+        enabled_groups: list[str] | None = None,
+    ) -> None:
+        """Initialize feature engineer with configurable feature groups.
 
         Args:
             cache_manager: Optional cache manager for parquet caching
+            enabled_groups: Optional list of group names to enable. If None,
+                          all groups are enabled by default.
+
+        Example:
+            # Use all groups (default)
+            engineer = FeatureEngineer()
+
+            # Use only specific groups
+            engineer = FeatureEngineer(enabled_groups=["market_risk", "momentum", "sector"])
         """
         self.registry = FeatureRegistry()
         self.cache_manager = cache_manager
+        self.enabled_groups: list[str] = enabled_groups or list(self.AVAILABLE_GROUPS.keys())
 
-        # Register all G1-G6 feature groups
-        self.registry.register("G1", G1RiskFeatures())
-        self.registry.register("G2", G2VolatilityFeatures())
-        self.registry.register("G3", G3MomentumFeatures())
-        self.registry.register("G4", G4ValuationFeatures())
-        self.registry.register("G5", G5OHLCVFeatures())
-        self.registry.register("G6", G6SectorFeatures())
+        # Register enabled feature groups
+        for name in self.enabled_groups:
+            if name in self.AVAILABLE_GROUPS:
+                self.registry.register(name, self.AVAILABLE_GROUPS[name]())
 
     def compute_features(self, df: pd.DataFrame, cache_key: str | None = None) -> pd.DataFrame:
-        """Compute all registered feature groups.
+        """Compute all enabled feature groups.
 
         Args:
             df: Input dataframe with required columns for feature computation
@@ -70,7 +92,7 @@ class FeatureEngineer:
 
         Args:
             df: Input dataframe
-            group_name: Name of the feature group (G1-G6)
+            group_name: Name of the feature group (e.g., "market_risk", "momentum")
 
         Returns:
             DataFrame with only that group's features added
@@ -95,7 +117,7 @@ class FeatureEngineer:
         return {name: group.get_feature_names() for name, group in self.registry._groups.items()}
 
     def get_all_feature_names(self) -> list[str]:
-        """Return all feature names from all groups.
+        """Return all feature names from all enabled groups.
 
         Returns:
             Flattened list of all feature names
@@ -104,3 +126,51 @@ class FeatureEngineer:
         for group in self.registry._groups.values():
             all_names.extend(group.get_feature_names())
         return all_names
+
+    def list_available_groups(self) -> list[str]:
+        """Return list of all available feature group names.
+
+        Returns:
+            List of available group names
+        """
+        return list(self.AVAILABLE_GROUPS.keys())
+
+    def list_enabled_groups(self) -> list[str]:
+        """Return list of currently enabled feature group names.
+
+        Returns:
+            List of enabled group names
+        """
+        return self.enabled_groups.copy()
+
+    def add_group(self, name: str) -> None:
+        """Add a feature group to the enabled set.
+
+        Args:
+            name: Name of the group to add (must be in AVAILABLE_GROUPS)
+
+        Raises:
+            ValueError: If group name is not available
+        """
+        if name not in self.AVAILABLE_GROUPS:
+            raise ValueError(
+                f"Group '{name}' not available. Available: {self.list_available_groups()}"
+            )
+        if name not in self.enabled_groups:
+            self.enabled_groups.append(name)
+            self.registry.register(name, self.AVAILABLE_GROUPS[name]())
+
+    def remove_group(self, name: str) -> None:
+        """Remove a feature group from the enabled set.
+
+        Args:
+            name: Name of the group to remove
+
+        Raises:
+            ValueError: If group is not currently enabled
+        """
+        if name not in self.enabled_groups:
+            raise ValueError(f"Group '{name}' is not enabled")
+        self.enabled_groups.remove(name)
+        if name in self.registry._groups:
+            del self.registry._groups[name]

@@ -1,4 +1,4 @@
-"""G4 valuation and fundamentals features (P/E, P/B, ROE, market cap)."""
+"""Valuation and fundamentals features (P/E, P/B, ROE, market cap)."""
 
 import numpy as np
 import pandas as pd
@@ -6,16 +6,16 @@ import pandas as pd
 from src.features.base import FeatureGroup
 
 
-class G4ValuationFeatures(FeatureGroup):
-    """G4 feature group: valuation and fundamental metrics.
+class ValuationFeatures(FeatureGroup):
+    """Valuation feature group: valuation and fundamental metrics.
 
     Computes market capitalization, P/E ratio, P/B ratio, and ROE
     with appropriate normalization.
     """
 
     def __init__(self) -> None:
-        """Initialize G4 valuation features."""
-        self.name = "G4_valuation"
+        """Initialize valuation features."""
+        self.name = "valuation"
         self._feature_names = [
             "log_mktcap",
             "pe_ratio",
@@ -28,7 +28,7 @@ class G4ValuationFeatures(FeatureGroup):
         return self._feature_names.copy()
 
     def compute(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Compute G4 valuation features.
+        """Compute valuation features.
 
         Args:
             df: Input dataframe with columns:
@@ -42,7 +42,7 @@ class G4ValuationFeatures(FeatureGroup):
                 - equity: Shareholder equity
 
         Returns:
-            DataFrame with G4 valuation features added.
+            DataFrame with valuation features added.
         """
         result = df.copy()
 

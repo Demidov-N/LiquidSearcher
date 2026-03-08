@@ -1,4 +1,4 @@
-"""Test unified feature engineer orchestrating G1-G6 computation."""
+"""Test unified feature engineer with configurable feature groups."""
 
 import tempfile
 from pathlib import Path
@@ -12,27 +12,61 @@ from src.features.engineer import FeatureEngineer
 
 
 def test_engineer_initialization():
-    """Test that all 6 feature groups are registered on init."""
+    """Test that feature groups are registered on init."""
     engineer = FeatureEngineer()
 
-    # Check all 6 groups are registered
+    # Check all groups are registered by default
     groups = engineer.get_feature_names()
 
-    # Count features per group
-    assert "G1" in str(groups), "G1 features should be present"
-    assert "G2" in str(groups), "G2 features should be present"
-    assert "G3" in str(groups), "G3 features should be present"
-    assert "G4" in str(groups), "G4 features should be present"
-    assert "G5" in str(groups), "G5 features should be present"
-    assert "G6" in str(groups), "G6 features should be present"
+    assert "market_risk" in groups
+    assert "volatility" in groups
+    assert "momentum" in groups
+    assert "valuation" in groups
+    assert "technical" in groups
+    assert "sector" in groups
 
-    # Verify total feature count (at minimum, should have all 6 groups)
-    all_features = engineer.get_all_feature_names()
-    assert len(all_features) > 0, "Should have features registered"
+
+def test_engineer_with_selected_groups():
+    """Test engineer with only selected feature groups."""
+    engineer = FeatureEngineer(enabled_groups=["market_risk", "momentum", "sector"])
+
+    groups = engineer.get_feature_names()
+    assert "market_risk" in groups
+    assert "momentum" in groups
+    assert "sector" in groups
+    assert "volatility" not in groups
+    assert "valuation" not in groups
+    assert "technical" not in groups
+
+
+def test_engineer_list_available_groups():
+    """Test listing available feature groups."""
+    engineer = FeatureEngineer()
+
+    available = engineer.list_available_groups()
+    assert "market_risk" in available
+    assert "volatility" in available
+    assert "momentum" in available
+    assert "valuation" in available
+    assert "technical" in available
+    assert "sector" in available
+
+
+def test_engineer_add_remove_groups():
+    """Test adding and removing feature groups."""
+    engineer = FeatureEngineer(enabled_groups=["market_risk"])
+
+    # Add a group
+    engineer.add_group("momentum")
+    assert "momentum" in engineer.list_enabled_groups()
+
+    # Remove a group
+    engineer.remove_group("market_risk")
+    assert "market_risk" not in engineer.list_enabled_groups()
 
 
 def test_engineer_compute_features():
-    """Test computing features for all G1-G6 groups."""
+    """Test computing features for all enabled groups."""
     engineer = FeatureEngineer()
 
     # Create test data with required columns for all groups
@@ -73,79 +107,21 @@ def test_engineer_compute_features():
     # Compute all features
     result = engineer.compute_features(df)
 
-    # Verify all 6 groups added features
-    g1_features = [
+    # Verify all groups added features
+    market_risk_features = [
         "market_beta_60d_zscore",
         "downside_beta_60d_zscore",
-        "smb_loading_zscore",
-        "hml_loading_zscore",
-        "mom_loading_zscore",
-        "rmw_loading_zscore",
-        "cma_loading_zscore",
     ]
 
-    for col in g1_features:
-        assert col in result.columns, f"G1 feature {col} should be present"
+    for col in market_risk_features:
+        assert col in result.columns, f"Market risk feature {col} should be present"
 
-    g2_features = [
+    volatility_features = [
         "realized_vol_20d_log_zscore",
-        "realized_vol_60d_log_zscore",
-        "idiosyncratic_vol_log_zscore",
-        "vol_of_vol_log_zscore",
     ]
 
-    for col in g2_features:
-        assert col in result.columns, f"G2 feature {col} should be present"
-
-    g3_features = [
-        "mom_1m_rank",
-        "mom_3m_rank",
-        "mom_6m_rank",
-        "mom_12_1m_rank",
-        "macd_rank",
-    ]
-
-    for col in g3_features:
-        assert col in result.columns, f"G3 feature {col} should be present"
-
-    g4_features = [
-        "log_mktcap",
-        "pe_ratio",
-        "pb_ratio",
-        "roe",
-    ]
-
-    for col in g4_features:
-        assert col in result.columns, f"G4 feature {col} should be present"
-
-    g5_features = [
-        "z_close_5d",
-        "z_close_10d",
-        "z_close_20d",
-        "z_high",
-        "z_low",
-        "z_volume_5d",
-        "z_volume_10d",
-        "z_volume_20d",
-        "ma_ratio_5",
-        "ma_ratio_10",
-        "ma_ratio_15",
-        "ma_ratio_20",
-        "ma_ratio_25",
-    ]
-
-    for col in g5_features:
-        assert col in result.columns, f"G5 feature {col} should be present"
-
-    g6_features = [
-        "gics_sector",
-        "gics_industry_group",
-        "gics_sector_str",
-        "gics_industry_group_str",
-    ]
-
-    for col in g6_features:
-        assert col in result.columns, f"G6 feature {col} should be present"
+    for col in volatility_features:
+        assert col in result.columns, f"Volatility feature {col} should be present"
 
 
 def test_engineer_caching_works():

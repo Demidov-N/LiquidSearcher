@@ -2,8 +2,9 @@
 
 This script shows how to:
 1. Load mock data using WRDSDataLoader
-2. Compute all G1-G6 features using FeatureEngineer
-3. Inspect the results
+2. Compute all features using FeatureEngineer
+3. Use only selected feature groups
+4. Inspect the results
 
 Usage:
     python examples/compute_features.py
@@ -65,39 +66,57 @@ def main():
             # Generate random factor returns
             df[col] = np.random.randn(len(df)) * 0.01 + default
 
-    print("\n2. Computing features...")
+    print("\n2. Computing features with ALL groups...")
 
-    # Initialize feature engineer
-    engineer = FeatureEngineer()
+    # Initialize feature engineer with all groups
+    engineer_all = FeatureEngineer()
+
+    # Show available feature groups
+    available_groups = engineer_all.list_available_groups()
+    print(f"   Available groups: {available_groups}")
 
     # Show registered feature groups
-    groups = engineer.get_feature_names()
-    print(f"   Registered groups: {list(groups.keys())}")
+    groups = engineer_all.get_feature_names()
+    print(f"   Enabled groups: {list(groups.keys())}")
 
     # Compute all features
-    result = engineer.compute_features(df)
+    result_all = engineer_all.compute_features(df)
 
-    print(f"   Computed {len(engineer.get_all_feature_names())} features")
+    print(f"   Computed {len(engineer_all.get_all_feature_names())} features")
 
     # Display feature counts by group
-    print("\n3. Feature counts by group:")
+    print("\n3. Feature counts by group (all groups):")
     for group_name, features in groups.items():
         print(f"   {group_name}: {len(features)} features")
 
+    print("\n4. Computing features with SELECTED groups only...")
+
+    # Initialize feature engineer with only selected groups
+    engineer_selected = FeatureEngineer(enabled_groups=["market_risk", "momentum", "sector"])
+
+    # Show enabled groups
+    enabled_groups = engineer_selected.list_enabled_groups()
+    print(f"   Selected groups: {enabled_groups}")
+
+    # Compute only selected features
+    result_selected = engineer_selected.compute_features(df)
+
+    selected_features = engineer_selected.get_all_feature_names()
+    print(f"   Computed {len(selected_features)} features (from selected groups only)")
+
     # Show sample of features
-    print("\n4. Sample features (last 5 rows):")
-    feature_cols = engineer.get_all_feature_names()
-    sample_cols = feature_cols[:10] if len(feature_cols) > 10 else feature_cols
-    print(result[["symbol", "date"] + sample_cols].tail())
+    print("\n5. Sample features (last 5 rows, selected groups):")
+    sample_cols = selected_features[:10] if len(selected_features) > 10 else selected_features
+    print(result_selected[["symbol", "date"] + sample_cols].tail())
 
     # Show statistics
-    print("\n5. Feature statistics:")
-    print("   Total rows:", len(result))
-    print("   Total columns:", len(result.columns))
-    print("   Feature columns:", len(feature_cols))
+    print("\n6. Feature statistics:")
+    print("   Total rows:", len(result_selected))
+    print("   Total columns:", len(result_selected.columns))
+    print("   Feature columns:", len(selected_features))
 
     # Check for missing values
-    missing_counts = result[feature_cols].isna().sum()
+    missing_counts = result_selected[selected_features].isna().sum()
     features_with_missing = missing_counts[missing_counts > 0]
     if len(features_with_missing) > 0:
         print(f"\n   Features with missing values: {len(features_with_missing)}")
@@ -106,10 +125,10 @@ def main():
         print("\n   No missing values in features")
 
     # Show specific feature examples
-    print("\n6. Example feature values for AAPL (latest date):")
-    aapl_data = result[result["symbol"] == "AAPL"].tail(1)
+    print("\n7. Example feature values for AAPL (latest date, selected groups):")
+    aapl_data = result_selected[result_selected["symbol"] == "AAPL"].tail(1)
     if not aapl_data.empty:
-        for group_name, features in groups.items():
+        for group_name, features in engineer_selected.get_feature_names().items():
             print(f"\n   {group_name}:")
             for feat in features[:3]:  # Show first 3 from each group
                 if feat in aapl_data.columns:
@@ -120,7 +139,7 @@ def main():
     print("Feature computation complete!")
     print("=" * 60)
 
-    return result
+    return result_selected
 
 
 if __name__ == "__main__":

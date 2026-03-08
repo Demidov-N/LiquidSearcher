@@ -1,4 +1,4 @@
-"""Feature engineering pipeline (G1-G6)."""
+"""Feature engineering pipeline with selectable feature groups."""
 
 from src.features.base import (
     FeatureGroup,
@@ -6,22 +6,22 @@ from src.features.base import (
     NormalizationMethod,
 )
 from src.features.engineer import FeatureEngineer
-from src.features.g1_risk import G1RiskFeatures
-from src.features.g2_volatility import G2VolatilityFeatures
-from src.features.g3_momentum import G3MomentumFeatures
-from src.features.g4_valuation import G4ValuationFeatures
-from src.features.g5_ohlcv import G5OHLCVFeatures
-from src.features.g6_sector import G6SectorFeatures
+from src.features.market_risk import MarketRiskFeatures
+from src.features.momentum import MomentumFeatures
+from src.features.sector import SectorFeatures
+from src.features.technical import TechnicalFeatures
+from src.features.valuation import ValuationFeatures
+from src.features.volatility import VolatilityFeatures
 
 __all__ = [
     "FeatureGroup",
     "FeatureRegistry",
     "NormalizationMethod",
     "FeatureEngineer",
-    "G1RiskFeatures",
-    "G2VolatilityFeatures",
-    "G3MomentumFeatures",
-    "G4ValuationFeatures",
-    "G5OHLCVFeatures",
-    "G6SectorFeatures",
+    "MarketRiskFeatures",
+    "MomentumFeatures",
+    "SectorFeatures",
+    "TechnicalFeatures",
+    "ValuationFeatures",
+    "VolatilityFeatures",
 ]

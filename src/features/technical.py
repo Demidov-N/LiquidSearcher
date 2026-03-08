@@ -1,12 +1,12 @@
-"""G5 OHLCV behavior features (price behavior)."""
+"""Technical/price pattern features (OHLCV behavior)."""
 
 import pandas as pd
 
 from src.features.base import FeatureGroup
 
 
-class G5OHLCVFeatures(FeatureGroup):
-    """G5 feature group: OHLCV behavior and technical features.
+class TechnicalFeatures(FeatureGroup):
+    """Technical feature group: OHLCV behavior and technical indicators.
 
     Computes z-scores of returns, high/low relative to close,
     z-scores of volume changes, and moving average ratios.
@@ -15,8 +15,8 @@ class G5OHLCVFeatures(FeatureGroup):
     """
 
     def __init__(self) -> None:
-        """Initialize G5 OHLCV features."""
-        self.name = "G5_ohlcv"
+        """Initialize technical features."""
+        self.name = "technical"
         self._feature_names = [
             "z_close_5d",
             "z_close_10d",
@@ -38,7 +38,7 @@ class G5OHLCVFeatures(FeatureGroup):
         return self._feature_names.copy()
 
     def compute(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Compute G5 OHLCV features.
+        """Compute technical features.
 
         Args:
             df: Input dataframe with columns:
@@ -50,7 +50,7 @@ class G5OHLCVFeatures(FeatureGroup):
                 - volume: Trading volume
 
         Returns:
-            DataFrame with G5 OHLCV features added.
+            DataFrame with technical features added.
         """
         result = df.copy()
 

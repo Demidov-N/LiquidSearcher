@@ -1,4 +1,4 @@
-"""G1 systematic risk features (beta and factor loadings)."""
+"""Market risk features (beta computations)."""
 
 import numpy as np
 import pandas as pd
@@ -7,24 +7,19 @@ from scipy import stats
 from src.features.base import FeatureGroup
 
 
-class G1RiskFeatures(FeatureGroup):
-    """G1 feature group: systematic risk exposure.
+class MarketRiskFeatures(FeatureGroup):
+    """Market risk feature group: systematic risk exposure.
 
-    Computes market beta, downside beta, and factor loadings
-    for Fama-French 5 factors.
+    Computes market beta and downside beta (beta during negative market returns).
+    Note: FF5 factor loadings excluded - using only market beta for methodology.
     """
 
     def __init__(self) -> None:
-        """Initialize G1 risk features."""
-        self.name = "G1_risk"
+        """Initialize market risk features."""
+        self.name = "market_risk"
         self._feature_names = [
             "market_beta_60d",
             "downside_beta_60d",
-            "smb_loading",
-            "hml_loading",
-            "mom_loading",
-            "rmw_loading",
-            "cma_loading",
         ]
 
     def get_feature_names(self) -> list[str]:
@@ -32,18 +27,17 @@ class G1RiskFeatures(FeatureGroup):
         return self._feature_names.copy()
 
     def compute(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Compute G1 risk features.
+        """Compute market risk features.
 
         Args:
             df: Input dataframe with columns:
                 - symbol: Stock identifier
                 - date: Date column
                 - return: Stock returns
-                - market_return: Market returns (for beta)
-                - smb_factor, hml_factor, mom_factor, rmw_factor, cma_factor: FF5 factors
+                - market_return: Market returns (for beta computation)
 
         Returns:
-            DataFrame with G1 risk features added.
+            DataFrame with market risk features added.
         """
         result = df.copy()
 
@@ -53,18 +47,10 @@ class G1RiskFeatures(FeatureGroup):
         # Compute downside beta
         result = self._compute_downside_beta(result, window=60)
 
-        # Compute factor loadings (252-day window)
-        result = self._compute_factor_loadings(result, window=252)
-
         # Normalize features: winsorize then cross-sectional z-score
         raw_features = [
             "market_beta_60d",
             "downside_beta_60d",
-            "smb_loading",
-            "hml_loading",
-            "mom_loading",
-            "rmw_loading",
-            "cma_loading",
         ]
 
         # Winsorize at 1% and 99%
@@ -205,84 +191,5 @@ class G1RiskFeatures(FeatureGroup):
                 result["downside_beta_60d"] = beta_series.reindex(result.index)
         else:
             result["downside_beta_60d"] = np.nan
-
-        return result
-
-    def _compute_factor_loadings(
-        self, df: pd.DataFrame, window: int = 252, min_periods: int = 126
-    ) -> pd.DataFrame:
-        """Compute Fama-French 5 factor loadings via rolling OLS."""
-        result = df.copy()
-
-        factor_columns = ["smb_factor", "hml_factor", "mom_factor", "rmw_factor", "cma_factor"]
-        factor_names = ["smb_loading", "hml_loading", "mom_loading", "rmw_loading", "cma_loading"]
-
-        # Check if all factor columns are present
-        missing_factors = [col for col in factor_columns if col not in result.columns]
-        if missing_factors:
-            # If factors are missing, set all loadings to NaN
-            for name in factor_names:
-                result[name] = np.nan
-            return result
-
-        def rolling_factor_loadings(group: pd.DataFrame) -> pd.DataFrame:
-            """Calculate rolling factor loadings for a single symbol."""
-            n = len(group)
-            loadings = {name: [] for name in factor_names}
-
-            returns = group["return"].values
-            factors = {col: group[col].values for col in factor_columns}
-
-            for i in range(n):
-                if i < min_periods - 1:
-                    for name in factor_names:
-                        loadings[name].append(np.nan)
-                    continue
-
-                start_idx = max(0, i - window + 1)
-                stock_ret = returns[start_idx : i + 1]
-
-                # Build factor matrix
-                factor_matrix = np.column_stack(
-                    [factors[col][start_idx : i + 1] for col in factor_columns]
-                )
-
-                # Remove rows with any NaN
-                valid_mask = ~(np.isnan(stock_ret) | np.isnan(factor_matrix).any(axis=1))
-
-                if valid_mask.sum() < min_periods:
-                    for name in factor_names:
-                        loadings[name].append(np.nan)
-                    continue
-
-                stock_ret_clean = stock_ret[valid_mask]
-                factor_matrix_clean = factor_matrix[valid_mask]
-
-                # Multiple regression via least squares
-                try:
-                    # Add intercept
-                    x_matrix = np.column_stack(
-                        [np.ones(len(factor_matrix_clean)), factor_matrix_clean]
-                    )
-
-                    # Solve: beta = (X'X)^(-1) X'y
-                    coeffs, _, _, _ = np.linalg.lstsq(x_matrix, stock_ret_clean, rcond=None)
-
-                    # coeffs[0] is intercept, coeffs[1:] are factor loadings
-                    for idx, name in enumerate(factor_names):
-                        loadings[name].append(coeffs[idx + 1])
-
-                except Exception:
-                    for name in factor_names:
-                        loadings[name].append(np.nan)
-
-            return pd.DataFrame(loadings, index=group.index)
-
-        # Apply rolling factor loadings computation per symbol
-        loadings_df = result.groupby("symbol", group_keys=False).apply(rolling_factor_loadings)
-
-        # Merge loadings back into result
-        for name in factor_names:
-            result[name] = loadings_df[name].values
 
         return result

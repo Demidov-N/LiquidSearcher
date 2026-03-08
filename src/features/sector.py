@@ -1,12 +1,12 @@
-"""G6 sector categorical features."""
+"""Sector categorical features."""
 
 import pandas as pd
 
 from src.features.base import FeatureGroup
 
 
-class G6SectorFeatures(FeatureGroup):
-    """G6 feature group: sector categorical encoding.
+class SectorFeatures(FeatureGroup):
+    """Sector feature group: sector categorical encoding.
 
     Integer encodes GICS sector and industry group for use
     with embedding layers. Maintains consistent mapping
@@ -14,8 +14,8 @@ class G6SectorFeatures(FeatureGroup):
     """
 
     def __init__(self) -> None:
-        """Initialize G6 sector features."""
-        self.name = "G6_sector"
+        """Initialize sector features."""
+        self.name = "sector"
         self._feature_names = [
             "gics_sector",
             "gics_industry_group",
@@ -33,7 +33,7 @@ class G6SectorFeatures(FeatureGroup):
         return self._feature_names.copy()
 
     def compute(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Compute G6 sector categorical features.
+        """Compute sector categorical features.
 
         Args:
             df: Input dataframe with columns:
@@ -43,7 +43,7 @@ class G6SectorFeatures(FeatureGroup):
                 - gics_industry_group_str: GICS industry group name (string)
 
         Returns:
-            DataFrame with G6 sector features added:
+            DataFrame with sector features added:
                 - gics_sector: Integer encoding of sector
                 - gics_industry_group: Integer encoding of industry group
                 - gics_sector_str: Original sector string (preserved)

@@ -2,7 +2,7 @@
 
 This test verifies that:
 1. WRDSDataLoader can load mock data
-2. FeatureEngineer can compute all G1-G6 features
+2. FeatureEngineer can compute all feature groups
 3. All expected features are present in output
 4. Output is valid (no NaN where expected)
 """
@@ -88,8 +88,8 @@ class TestEndToEndIntegration:
         # Should have both price and fundamental columns
         assert len(df) > 0
 
-    def test_compute_all_g1_features(self, feature_engineer, sample_symbols):
-        """Test that all G1 risk features are computed."""
+    def test_compute_market_risk_features(self, feature_engineer, sample_symbols):
+        """Test that market risk features are computed."""
         dates = pd.date_range("2024-01-01", periods=100, freq="D")
 
         data = []
@@ -110,23 +110,23 @@ class TestEndToEndIntegration:
                 )
 
         df = pd.DataFrame(data)
-        result = feature_engineer.compute_single_group(df, "G1")
+        result = feature_engineer.compute_single_group(df, "market_risk")
 
-        g1_expected = [
+        expected = [
             "market_beta_60d_zscore",
             "downside_beta_60d_zscore",
-            "smb_loading_zscore",
-            "hml_loading_zscore",
-            "mom_loading_zscore",
-            "rmw_loading_zscore",
-            "cma_loading_zscore",
+            # Note: FF5 factor loadings (smb_loading, hml_loading, etc.) excluded from methodology
+            # Using only market beta for risk measurement
         ]
 
-        for feature in g1_expected:
-            assert feature in result.columns, f"G1 feature {feature} missing"
+        for feature in expected:
+            assert feature in result.columns, f"Market risk feature {feature} missing"
 
-    def test_compute_all_g2_features(self, feature_engineer, sample_symbols):
-        """Test that all G2 volatility features are computed."""
+        # Verify FF5 features are NOT present (confirming simplified methodology)
+        assert "smb_loading_zscore" not in result.columns, "FF5 features should be excluded"
+
+    def test_compute_volatility_features(self, feature_engineer, sample_symbols):
+        """Test that volatility features are computed."""
         dates = pd.date_range("2024-01-01", periods=100, freq="D")
 
         data = []
@@ -142,20 +142,20 @@ class TestEndToEndIntegration:
                 )
 
         df = pd.DataFrame(data)
-        result = feature_engineer.compute_single_group(df, "G2")
+        result = feature_engineer.compute_single_group(df, "volatility")
 
-        g2_expected = [
+        expected = [
             "realized_vol_20d_log_zscore",
             "realized_vol_60d_log_zscore",
             "idiosyncratic_vol_log_zscore",
             "vol_of_vol_log_zscore",
         ]
 
-        for feature in g2_expected:
-            assert feature in result.columns, f"G2 feature {feature} missing"
+        for feature in expected:
+            assert feature in result.columns, f"Volatility feature {feature} missing"
 
-    def test_compute_all_g3_features(self, feature_engineer, sample_symbols):
-        """Test that all G3 momentum features are computed."""
+    def test_compute_momentum_features(self, feature_engineer, sample_symbols):
+        """Test that momentum features are computed."""
         dates = pd.date_range("2024-01-01", periods=300, freq="D")
 
         data = []
@@ -172,9 +172,9 @@ class TestEndToEndIntegration:
                 )
 
         df = pd.DataFrame(data)
-        result = feature_engineer.compute_single_group(df, "G3")
+        result = feature_engineer.compute_single_group(df, "momentum")
 
-        g3_expected = [
+        expected = [
             "mom_1m_rank",
             "mom_3m_rank",
             "mom_6m_rank",
@@ -182,11 +182,11 @@ class TestEndToEndIntegration:
             "macd_rank",
         ]
 
-        for feature in g3_expected:
-            assert feature in result.columns, f"G3 feature {feature} missing"
+        for feature in expected:
+            assert feature in result.columns, f"Momentum feature {feature} missing"
 
-    def test_compute_all_g4_features(self, feature_engineer, sample_symbols):
-        """Test that all G4 valuation features are computed."""
+    def test_compute_valuation_features(self, feature_engineer, sample_symbols):
+        """Test that valuation features are computed."""
         dates = pd.date_range("2024-01-01", periods=50, freq="D")
 
         data = []
@@ -206,20 +206,20 @@ class TestEndToEndIntegration:
                 )
 
         df = pd.DataFrame(data)
-        result = feature_engineer.compute_single_group(df, "G4")
+        result = feature_engineer.compute_single_group(df, "valuation")
 
-        g4_expected = [
+        expected = [
             "log_mktcap",
             "pe_ratio",
             "pb_ratio",
             "roe",
         ]
 
-        for feature in g4_expected:
-            assert feature in result.columns, f"G4 feature {feature} missing"
+        for feature in expected:
+            assert feature in result.columns, f"Valuation feature {feature} missing"
 
-    def test_compute_all_g5_features(self, feature_engineer, sample_symbols):
-        """Test that all G5 OHLCV features are computed."""
+    def test_compute_technical_features(self, feature_engineer, sample_symbols):
+        """Test that technical features are computed."""
         dates = pd.date_range("2024-01-01", periods=300, freq="D")
 
         data = []
@@ -239,9 +239,9 @@ class TestEndToEndIntegration:
                 )
 
         df = pd.DataFrame(data)
-        result = feature_engineer.compute_single_group(df, "G5")
+        result = feature_engineer.compute_single_group(df, "technical")
 
-        g5_expected = [
+        expected = [
             "z_close_5d",
             "z_close_10d",
             "z_close_20d",
@@ -257,11 +257,11 @@ class TestEndToEndIntegration:
             "ma_ratio_25",
         ]
 
-        for feature in g5_expected:
-            assert feature in result.columns, f"G5 feature {feature} missing"
+        for feature in expected:
+            assert feature in result.columns, f"Technical feature {feature} missing"
 
-    def test_compute_all_g6_features(self, feature_engineer, sample_symbols):
-        """Test that all G6 sector features are computed."""
+    def test_compute_sector_features(self, feature_engineer, sample_symbols):
+        """Test that sector features are computed."""
         dates = pd.date_range("2024-01-01", periods=50, freq="D")
 
         sectors = ["Technology", "Healthcare", "Finance", "Energy", "Consumer"]
@@ -281,17 +281,17 @@ class TestEndToEndIntegration:
                 )
 
         df = pd.DataFrame(data)
-        result = feature_engineer.compute_single_group(df, "G6")
+        result = feature_engineer.compute_single_group(df, "sector")
 
-        g6_expected = [
+        expected = [
             "gics_sector",
             "gics_industry_group",
             "gics_sector_str",
             "gics_industry_group_str",
         ]
 
-        for feature in g6_expected:
-            assert feature in result.columns, f"G6 feature {feature} missing"
+        for feature in expected:
+            assert feature in result.columns, f"Sector feature {feature} missing"
 
     def test_full_pipeline_integration(
         self, mock_data_loader, feature_engineer, sample_symbols, date_range
@@ -334,26 +334,27 @@ class TestEndToEndIntegration:
         assert len(result) > 0
 
     def test_all_feature_groups_present(self, feature_engineer):
-        """Test that all G1-G6 feature groups are registered."""
+        """Test that all feature groups are registered."""
         groups = feature_engineer.get_feature_names()
 
-        assert "G1" in groups, "G1 should be registered"
-        assert "G2" in groups, "G2 should be registered"
-        assert "G3" in groups, "G3 should be registered"
-        assert "G4" in groups, "G4 should be registered"
-        assert "G5" in groups, "G5 should be registered"
-        assert "G6" in groups, "G6 should be registered"
+        assert "market_risk" in groups, "market_risk should be registered"
+        assert "volatility" in groups, "volatility should be registered"
+        assert "momentum" in groups, "momentum should be registered"
+        assert "valuation" in groups, "valuation should be registered"
+        assert "technical" in groups, "technical should be registered"
+        assert "sector" in groups, "sector should be registered"
 
     def test_feature_count(self, feature_engineer):
         """Test that we have the expected number of total features."""
         all_features = feature_engineer.get_all_feature_names()
 
-        # We expect:
-        # G1: 7 features (beta + 6 loadings, z-scored)
-        # G2: 4 features (vol metrics, log z-scored)
-        # G3: 5 features (momentum, ranked)
-        # G4: 4 features (valuation)
-        # G5: 13 features (OHLCV)
-        # G6: 4 features (sector encoding)
-        # Total: 37 features
-        assert len(all_features) >= 37, f"Expected at least 37 features, got {len(all_features)}"
+        # We expect (simplified methodology without FF5):
+        # market_risk: 2 features (market_beta_60d, downside_beta_60d, z-scored)
+        #   - Note: FF5 factor loadings (smb, hml, mom, rmw, cma) excluded
+        # volatility: 4 features (vol metrics, log z-scored)
+        # momentum: 5 features (momentum, ranked)
+        # valuation: 4 features (valuation)
+        # technical: 13 features (OHLCV)
+        # sector: 4 features (sector encoding)
+        # Total: 32 features (down from 37 with FF5)
+        assert len(all_features) >= 32, f"Expected at least 32 features, got {len(all_features)}"
