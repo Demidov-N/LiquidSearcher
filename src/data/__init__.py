@@ -1,5 +1,11 @@
 """Data loading and WRDS integration."""
 
-from src.data.wrds_loader import WRDSConfig, WRDSConnection
+from src.data.cache_manager import CacheManager
+from src.data.wrds_loader import WRDSConfig, WRDSConnection, WRDSDataLoader
 
-__all__ = ["WRDSConfig", "WRDSConnection"]
+__all__ = [
+    "CacheManager",
+    "WRDSConfig",
+    "WRDSConnection",
+    "WRDSDataLoader",
+]
