@@ -107,7 +107,8 @@ def compute_stock_embedding(
         "roe",
     ]
 
-    tabular_cont = symbol_df.iloc[pos][tabular_cont_cols].astype(float).values
+    # Extract tabular features, filling NaN with 0 (model was trained with some NaN features masked)
+    tabular_cont = symbol_df.iloc[pos][tabular_cont_cols].fillna(0.0).astype(float).values
     # Ensure categorical indices are non-negative (embedding lookup requires >= 0)
     gsector_val = max(0, int(symbol_df.iloc[pos]["gsector"]))
     ggroup_val = max(0, int(symbol_df.iloc[pos]["ggroup"]))
