@@ -150,7 +150,11 @@ def process_symbol_batch(
             batch_results.append(features)
 
         except Exception as e:
+            import traceback
+
             print(f"  Warning: Error processing {symbol}: {e}")
+            print(f"  Full traceback:")
+            traceback.print_exc()
             continue
 
     if not batch_results:
