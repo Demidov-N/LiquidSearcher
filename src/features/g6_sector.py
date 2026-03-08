@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from src.features.base import FeatureGroup, NormalizationMethod
+from src.features.base import FeatureGroup
 
 
 class G6SectorFeatures(FeatureGroup):
