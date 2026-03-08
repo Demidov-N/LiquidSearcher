@@ -85,13 +85,23 @@ def process_symbol_batch(
     
     # Fetch fundamentals
     logger.info("  Fetching fundamentals...")
-    fundamentals_df = loader.fetch_fundamentals_batch(symbols, start_date, end_date)
-    logger.info(f"  Got {len(fundamentals_df)} fundamental rows" if not fundamentals_df.empty else "  No fundamental data")
+    try:
+        fundamentals_df = loader.fetch_fundamentals_batch(symbols, start_date, end_date)
+        logger.info(f"  Got {len(fundamentals_df)} fundamental rows" if not fundamentals_df.empty else "  No fundamental data")
+    except Exception as e:
+        logger.warning(f"  Could not fetch fundamentals: {e}")
+        logger.warning("  Continuing without fundamentals...")
+        fundamentals_df = None
     
     # Fetch GICS codes
     logger.info("  Fetching GICS codes...")
-    gics_df = loader.fetch_gics_codes(symbols)
-    logger.info(f"  Got {len(gics_df)} GICS rows" if not gics_df.empty else "  No GICS data")
+    try:
+        gics_df = loader.fetch_gics_codes(symbols)
+        logger.info(f"  Got {len(gics_df)} GICS rows" if not gics_df.empty else "  No GICS data")
+    except Exception as e:
+        logger.warning(f"  Could not fetch GICS codes: {e}")
+        logger.warning("  Continuing without GICS codes...")
+        gics_df = None
     
     # Process features
     logger.info("  Computing features...")
