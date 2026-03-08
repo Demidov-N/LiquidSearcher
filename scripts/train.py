@@ -190,8 +190,9 @@ def main():
             # - FeatureDataset adds 60-day window
             # - ma_ratio_20 needs 20 days
             # - mom_12_1m needs 273 days (currently excluded)
-            # Total: ~400 days to ensure all features are valid
-            purge_days = 400  # ~1.1 years purge for lookback features
+            # Total: ~500 days to ensure all features are valid
+            # (400 for lookback + 60 for FeatureDataset window + 40 buffer)
+            purge_days = 500  # ~1.4 years purge for lookback features
             val_fold = validator.get_val_fold(args.fold)
             train_start = pd.Timestamp(validator.train_start) + pd.Timedelta(days=purge_days)
             train_end = pd.Timestamp(validator.train_end)
