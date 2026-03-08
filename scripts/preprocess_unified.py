@@ -220,12 +220,36 @@ def process_unified(
 
     # Combine all results
     if all_results:
+        # Step 1: Concatenate raw data from all batches
         unified_df = pd.concat(all_results, ignore_index=True)
 
-        # Ensure proper column ordering
-        first_cols = ["date", "symbol", "open", "high", "low", "close", "volume", "return"]
-        other_cols = [c for c in unified_df.columns if c not in first_cols]
-        unified_df = unified_df[first_cols + other_cols]
+        # Step 2: Compute market return (needed for beta calculations)
+        if "return" in unified_df.columns:
+            market_returns = unified_df.groupby("date")["return"].mean().reset_index()
+            market_returns.rename(columns={"return": "market_return"}, inplace=True)
+            unified_df = unified_df.merge(market_returns, on="date", how="left")
+
+        # Step 3: Re-run feature engineering on combined data with market_return
+        # This ensures market risk features (beta) are computed correctly
+        print("  Computing features on combined data...")
+        engineer = FeatureEngineer()
+        unified_df = engineer.compute_features(unified_df)
+
+        # Step 4: Ensure proper column ordering
+        first_cols = [
+            "date",
+            "symbol",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "return",
+            "market_return",
+        ]
+        first_cols_existing = [c for c in first_cols if c in unified_df.columns]
+        other_cols = [c for c in unified_df.columns if c not in first_cols_existing]
+        unified_df = unified_df[first_cols_existing + other_cols]
 
         # Save to parquet with snappy compression
         unified_df.to_parquet(output_file, compression="snappy")

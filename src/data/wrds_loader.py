@@ -171,6 +171,7 @@ def load_ohlcv(
             "bidlo": "low",
             "askhi": "high",
             "shrout": "shares_out",
+            "ret": "return",
         }
         df = df.rename(columns={k: v for k, v in col_rename.items() if k in df.columns})
 
@@ -347,6 +348,44 @@ def load_fundamental(
         # Convert datadate to datetime if it's not already datetime
         if "datadate" in df.columns and not pd.api.types.is_datetime64_any_dtype(df["datadate"]):
             df["datadate"] = pd.to_datetime(df["datadate"])
+
+        # Rename WRDS columns to match feature engineering expectations
+        # WRDS naming -> Standard naming
+        wrds_col_map = {
+            "epspx": "eps",  # Earnings per share
+            "prcc_f": "price",  # Price close fiscal
+        }
+        df = df.rename(columns={k: v for k, v in wrds_col_map.items() if k in df.columns})
+
+        # Compute derived columns for valuation features
+        if "seq" in df.columns and "csho" in df.columns:
+            # Book value per share = Stockholders Equity / Shares Outstanding
+            df["book_value_per_share"] = df["seq"] / df["csho"]
+
+        if "ni" in df.columns:
+            df["net_income"] = df["ni"]
+
+        if "ni" in df.columns and "seq" in df.columns:
+            # ROE = Net Income / Stockholders Equity
+            df["roe"] = df["ni"] / df["seq"]
+
+        # Compute P/E and P/B using renamed columns
+        if "price" in df.columns and "eps" in df.columns:
+            # P/E = Price / EPS
+            df["pe_ratio"] = df["price"] / df["eps"]
+
+        if "price" in df.columns and "book_value_per_share" in df.columns:
+            # P/B = Price / Book Value per Share
+            df["pb_ratio"] = df["price"] / df["book_value_per_share"]
+
+        # Compute market cap if not present
+        if "market_cap" not in df.columns:
+            if "mkvalt" in df.columns:
+                # Use WRDS market value if available
+                df["market_cap"] = df["mkvalt"]
+            elif "price" in df.columns and "csho" in df.columns:
+                # Market cap = Price * Shares Outstanding
+                df["market_cap"] = df["price"] * df["csho"]
 
     # Cache result
     if use_cache:

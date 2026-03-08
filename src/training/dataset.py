@@ -48,7 +48,7 @@ class FeatureDataset(Dataset):
         "mom_1m",
         "mom_3m",
         "mom_6m",
-        "mom_12_1m",  # Jegadeesh-Titman momentum
+        # "mom_12_1m",  # Temporarily excluded - requires 273 days, 2023 only has 252
         "macd",
         "log_mktcap",
         "pe_ratio",
@@ -267,10 +267,15 @@ class FeatureDataset(Dataset):
         ggroup_idx = self.categorical_mappings["ggroup"].get(ggroup_val, 0)
 
         # Convert to tensors
+        # Ensure temporal data is float64 (not pandas nullable Float64 which converts to object)
+        temporal_values = temporal_window.values
+        if temporal_values.dtype == object:
+            temporal_values = temporal_window.astype(float).values
+
         sample = {
             "symbol": symbol,
             "date": date,
-            "temporal": torch.tensor(temporal_window.values, dtype=torch.float32),
+            "temporal": torch.tensor(temporal_values, dtype=torch.float32),
             "tabular_cont": torch.tensor(tabular_cont.values, dtype=torch.float32),
             "tabular_cat": torch.tensor([gsector_idx, ggroup_idx], dtype=torch.long),
             "beta": beta,
