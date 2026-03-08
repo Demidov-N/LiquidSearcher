@@ -43,6 +43,7 @@ def process_symbol_batch(
     end_date: str,
     loader: WRDSDataLoader,
     processor: FeatureProcessor,
+    skip_betas: bool = False,
 ) -> pd.DataFrame:
     """Process a single batch of symbols.
     
@@ -68,14 +69,19 @@ def process_symbol_batch(
     
     logger.info(f"  Got {len(prices_df)} price rows")
     
-    # Fetch pre-computed betas (if enabled)
+    # Fetch pre-computed betas (if enabled and not skipped)
     betas_df = None
-    if get_settings().use_precomputed_betas:
+    if not skip_betas:
         logger.info("  Fetching pre-computed betas...")
-        betas_df = loader.fetch_precomputed_betas_batch(
-            symbols, start_date, end_date, window=60
-        )
-        logger.info(f"  Got {len(betas_df)} beta rows" if not betas_df.empty else "  No beta data")
+        try:
+            betas_df = loader.fetch_precomputed_betas_batch(
+                symbols, start_date, end_date, window=60
+            )
+            logger.info(f"  Got {len(betas_df)} beta rows" if not betas_df.empty else "  No beta data")
+        except Exception as e:
+            logger.warning(f"  Could not fetch betas: {e}")
+            logger.warning("  Continuing without pre-computed betas...")
+            betas_df = None
     
     # Fetch fundamentals
     logger.info("  Fetching fundamentals...")
@@ -261,6 +267,7 @@ def main():
                     end_date=args.end_date,
                     loader=loader,
                     processor=processor,
+                    skip_betas=args.skip_betas,
                 )
                 
                 # Write incrementally
