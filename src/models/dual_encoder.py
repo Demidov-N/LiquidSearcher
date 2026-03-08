@@ -50,7 +50,8 @@ class DualEncoder(nn.Module):
         # Auto-generate embedding dims if not provided but categorical dims are
         if cat_dims and not emb_dims:
             # Default: use min(cardinality // 2, 50) for each categorical feature
-            emb_dims = [min(dim // 2, 50) for dim in cat_dims]
+            # Ensure minimum of 1 (can't have 0-dim embeddings)
+            emb_dims = [max(min(dim // 2, 50), 1) for dim in cat_dims]
 
         self.tabular_encoder = TabMixer(
             continuous_dim=tabular_continuous_dim,
