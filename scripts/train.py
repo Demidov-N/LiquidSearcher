@@ -16,6 +16,11 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+# Disable efficient attention backends to fix CUDA NaN error
+# See: https://github.com/pytorch/pytorch/issues/110213
+torch.backends.cuda.enable_flash_sdp(False)
+torch.backends.cuda.enable_mem_efficient_sdp(False)
+
 from src.models import DualEncoder, InfoNCELoss
 from src.models.sampler import GICSHardNegativeSampler
 from src.training.dataloader import StockDataLoader
