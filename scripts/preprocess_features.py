@@ -28,6 +28,7 @@ from src.data.credentials import validate_and_exit
 from src.data.universe import SymbolUniverse
 from src.data.wrds_loader import WRDSDataLoader
 from src.features.processor import FeatureProcessor
+from src.utils.memory import get_available_memory_mb, get_recommended_batch_size, print_memory_status
 
 logging.basicConfig(
     level=logging.INFO,
@@ -168,8 +169,14 @@ def main():
     parser.add_argument(
         '--batch-size',
         type=int,
-        default=750,
-        help='Number of symbols per batch (default 750 for 30GB RAM)'
+        default=None,
+        help='Number of symbols per batch (auto-detected based on available RAM if not specified)'
+    )
+    parser.add_argument(
+        '--auto-memory',
+        action='store_true',
+        default=True,
+        help='Auto-detect available memory and adjust batch size (default: True)'
     )
     parser.add_argument(
         '--output',
@@ -190,13 +197,35 @@ def main():
     
     args = parser.parse_args()
     
+    # Print memory status and auto-detect batch size
+    print("\n" + "="*60)
+    print("DATA PREPROCESSING PIPELINE")
+    print("="*60)
+    print_memory_status()
+    
+    # Determine batch size
+    if args.batch_size is not None:
+        # User explicitly specified batch size
+        batch_size = args.batch_size
+        print(f"Using user-specified batch size: {batch_size}")
+    elif args.auto_memory:
+        # Auto-detect based on memory
+        batch_size = get_recommended_batch_size(safety_factor=0.5)  # 50% for extra safety
+        print(f"Auto-detected batch size: {batch_size} (based on available memory)")
+    else:
+        # Default conservative value
+        batch_size = 200
+        print(f"Using default batch size: {batch_size}")
+    
+    print("="*60 + "\n")
+    
     # Validate WRDS credentials unless using mock data
     if not args.use_mock:
         validate_and_exit()
     
     # Setup
     settings = get_settings()
-    settings.batch_size = args.batch_size
+    settings.batch_size = batch_size
     if args.skip_betas:
         settings.use_precomputed_betas = False
     
@@ -205,9 +234,9 @@ def main():
     
     # Get universe symbols
     symbols = get_universe_symbols(settings)
-    universe = SymbolUniverse(symbols, batch_size=args.batch_size)
+    universe = SymbolUniverse(symbols, batch_size=batch_size)
     
-    logger.info(f"Processing {len(universe)} symbols in batches of {args.batch_size}")
+    logger.info(f"Processing {len(universe)} symbols in batches of {batch_size}")
     logger.info(f"Date range: {args.start_date} to {args.end_date}")
     logger.info(f"Output: {output_path}")
     
@@ -216,7 +245,7 @@ def main():
     
     # Process batches with progress tracking
     is_first_batch = True
-    total_batches = (len(universe) + args.batch_size - 1) // args.batch_size
+    total_batches = (len(universe) + batch_size - 1) // batch_size
     
     with WRDSDataLoader() as loader:
         for batch_num, symbol_batch in enumerate(universe.batches(desc="Processing batches"), 1):
