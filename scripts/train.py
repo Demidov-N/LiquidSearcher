@@ -186,8 +186,10 @@ def main():
             val_end = pd.Timestamp("2023-12-27")
         else:
             # Full mode: use CrossRegimeValidator dates
+            # Add purge period for feature lookback (mom_12_1m needs 273 days)
+            purge_days = 300  # ~1 year purge for lookback features
             val_fold = validator.get_val_fold(args.fold)
-            train_start = pd.Timestamp(validator.train_start)
+            train_start = pd.Timestamp(validator.train_start) + pd.Timedelta(days=purge_days)
             train_end = pd.Timestamp(validator.train_end)
             val_start = pd.Timestamp(val_fold.start)
             val_end = pd.Timestamp(val_fold.end)
