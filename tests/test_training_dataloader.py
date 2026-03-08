@@ -14,6 +14,11 @@ def test_dataloader_with_hard_negatives(tmp_path):
     feature_dir = tmp_path / "features"
     feature_dir.mkdir()
 
+    # Get column names from FeatureDataset
+    temporal_cols = FeatureDataset.TEMPORAL_COLS
+    tabular_cols = FeatureDataset.TABULAR_CONT_COLS
+    cat_cols = FeatureDataset.TABULAR_CAT_COLS
+
     # Create features for 3 stocks
     dates = pd.date_range("2020-01-01", periods=300, freq="B")
     for symbol, ggroup, beta in [
@@ -21,34 +26,25 @@ def test_dataloader_with_hard_negatives(tmp_path):
         ("MSFT", 4520, 1.1),
         ("GOOGL", 4510, 1.8),  # Same ggroup as AAPL, different beta
     ]:
-        features = pd.DataFrame(
-            {
-                "z_score_20d": np.random.randn(300),
-                "z_score_60d": np.random.randn(300),
-                "ma_ratio_20_60": np.random.randn(300),
-                "volume_trend": np.random.randn(300),
-                "volatility_20d": np.random.randn(300),
-                "momentum_20d": np.random.randn(300),
-                "momentum_60d": np.random.randn(300),
-                "momentum_252d": np.random.randn(300),
-                "market_beta_60d": np.full(300, beta),
-                "downside_beta_60d": np.random.randn(300),
-                "realized_vol_20d": np.random.randn(300),
-                "realized_vol_60d": np.random.randn(300),
-                "pe_ratio": np.random.randn(300),
-                "pb_ratio": np.random.randn(300),
-                "roe": np.random.randn(300),
-                "market_cap_log": np.random.randn(300),
-                "parkinson_vol": np.random.randn(300),
-                "garch_vol": np.random.randn(300),
-                "momentum_ratio": np.random.randn(300),
-                "reversal_5d": np.random.randn(300),
-                "price_trend": np.random.randn(300),
-                "gsector": np.full(300, 45),
-                "ggroup": np.full(300, ggroup),
-            },
-            index=dates,
-        )
+        # Create temporal columns (13 features)
+        temporal_data = {col: np.random.randn(300) for col in temporal_cols}
+
+        # Create tabular continuous columns (15 features)
+        tabular_data = {col: np.random.randn(300) for col in tabular_cols}
+
+        # Set specific beta values for testing
+        tabular_data["market_beta_60d"] = np.full(300, beta)
+
+        # Create categorical columns
+        cat_data = {
+            "gsector": np.full(300, 45),
+            "ggroup": np.full(300, ggroup),
+        }
+
+        # Combine all data
+        all_data = {**temporal_data, **tabular_data, **cat_data}
+
+        features = pd.DataFrame(all_data, index=dates)
         features.index.name = "date"
         features.to_parquet(feature_dir / f"{symbol}_features.parquet")
 

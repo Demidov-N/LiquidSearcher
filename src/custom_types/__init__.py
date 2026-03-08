@@ -1,6 +1,6 @@
 """Type definitions for the system."""
 
-from src.types.common import (
+from src.custom_types.common import (
     Embedding,
     FeatureMatrix,
     FeatureVector,

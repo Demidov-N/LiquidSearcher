@@ -5,15 +5,17 @@ for every stock, saving to parquet files for efficient training.
 """
 
 import argparse
-import sys
+from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
 from tqdm import tqdm
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
 from src.data.cache_manager import CacheManager
-from src.data.wrds_loader import WRDSLoader
+from src.data.wrds_loader import (
+    load_fundamental,
+    load_ohlcv,
+)
 from src.features.engineer import FeatureEngineer
 
 
@@ -36,43 +38,91 @@ def main():
         type=str,
         nargs="+",
         default=None,
-        help="Specific symbols to process (default: all Russell 2000 + S&P 400)",
+        help="Specific symbols to process",
     )
 
     args = parser.parse_args()
 
     # Initialize components
-    loader = WRDSLoader()
-    engineer = FeatureEngineer(cache_manager=CacheManager(cache_dir=args.output_dir))
+    cache_manager = CacheManager(cache_dir=args.output_dir)
+    engineer = FeatureEngineer(cache_manager=cache_manager)
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Get universe of stocks
-    if args.symbols is None:
-        print("Loading Russell 2000 + S&P 400 universe...")
-        symbols = loader.get_universe_symbols()
-    else:
-        symbols = args.symbols
+    # Parse dates
+    start_date = datetime.strptime(args.start_date, "%Y-%m-%d")
+    end_date = datetime.strptime(args.end_date, "%Y-%m-%d")
 
+    # Get symbols to process
+    if args.symbols is None:
+        print("Error: No symbols provided. Use --symbols to specify stocks.")
+        return
+
+    symbols = args.symbols
     print(f"Processing {len(symbols)} stocks...")
 
     # Process each stock
     for symbol in tqdm(symbols, desc="Computing features"):
         try:
-            prices = loader.load_prices(
+            # Load OHLCV data
+            prices = load_ohlcv(
                 symbols=[symbol],
-                start_date=args.start_date,
-                end_date=args.end_date,
+                start_date=start_date,
+                end_date=end_date,
             )
 
-            fundamentals = loader.load_fundamentals(
+            # Load fundamental data
+            fundamentals = load_fundamental(
                 symbols=[symbol],
-                start_date=args.start_date,
-                end_date=args.end_date,
+                start_date=start_date,
+                end_date=end_date,
             )
 
-            features = engineer.compute_all_features(prices, fundamentals)
+            # Combine into single dataframe
+            if isinstance(prices, pd.DataFrame) and isinstance(fundamentals, pd.DataFrame):
+                # Merge fundamentals into prices (forward fill for daily data)
+                if "date" in fundamentals.columns:
+                    fundamentals = fundamentals.rename(columns={"date": "datadate"})
+                combined = prices.merge(fundamentals, on="symbol", how="left")
+                features = engineer.compute_features(combined, cache_key=symbol)
+            else:
+                # If one is None or different format, use just prices
+                features = engineer.compute_features(prices, cache_key=symbol)
+
+            # Ensure required columns are present for FeatureDataset
+            # Preserve raw OHLCV columns if they were dropped during feature computation
+            raw_ohlcv = ["open", "high", "low", "close", "volume", "return"]
+
+            # Check if we have the raw columns from prices dataframe
+            if isinstance(prices, pd.DataFrame):
+                for col in raw_ohlcv:
+                    if col not in features.columns and col in prices.columns:
+                        # Merge raw OHLCV columns back into features
+                        if "date" in prices.columns:
+                            # Merge on date
+                            features = features.merge(
+                                prices[["date", "symbol", col]], on=["date", "symbol"], how="left"
+                            )
+
+            # Add return column if not present (compute from close)
+            if "return" not in features.columns and "close" in features.columns:
+                features["return"] = features["close"].pct_change()
+
+            # Ensure date column is present for proper indexing
+            if "date" not in features.columns:
+                # Try to infer from index or datadate
+                if "datadate" in features.columns:
+                    features["date"] = features["datadate"]
+                elif hasattr(features.index, "name") and features.index.name == "date":
+                    features["date"] = features.index
+                elif hasattr(features.index, "name") and features.index.name is not None:
+                    features["date"] = features.index
+
+            # Check for missing columns and warn
+            missing = [col for col in raw_ohlcv if col not in features.columns]
+            if missing:
+                print(f"Warning: {symbol} missing temporal columns: {missing}")
 
             output_file = output_dir / f"{symbol}_features.parquet"
             features.to_parquet(output_file)

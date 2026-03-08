@@ -1,10 +1,7 @@
 """Tests for FeatureDataset PyTorch Dataset."""
 
-from datetime import datetime
-
 import numpy as np
 import pandas as pd
-import pytest
 import torch
 
 from src.training.dataset import FeatureDataset
@@ -16,17 +13,30 @@ def test_dataset_initialization(tmp_path):
     feature_dir = tmp_path / "features"
     feature_dir.mkdir()
 
-    # Create sample features for AAPL
+    # Create sample features for AAPL with correct column names
     dates = pd.date_range("2020-01-01", periods=300, freq="B")
-    features = pd.DataFrame(
-        {
-            "z_score_20d": np.random.randn(300),
-            "market_beta_60d": np.random.randn(300),
-            "gsector": np.full(300, 45),
-            "ggroup": np.full(300, 4510),
-        },
-        index=dates,
-    )
+
+    # Use exact column names from FeatureDataset
+    temporal_cols = FeatureDataset.TEMPORAL_COLS
+    tabular_cols = FeatureDataset.TABULAR_CONT_COLS
+    cat_cols = FeatureDataset.TABULAR_CAT_COLS
+
+    # Create temporal columns (13 features)
+    temporal_data = {col: np.random.randn(300) for col in temporal_cols}
+
+    # Create tabular continuous columns (15 features)
+    tabular_data = {col: np.random.randn(300) for col in tabular_cols}
+
+    # Create categorical columns
+    cat_data = {
+        "gsector": np.full(300, 45),
+        "ggroup": np.full(300, 4510),
+    }
+
+    # Combine all data
+    all_data = {**temporal_data, **tabular_data, **cat_data}
+
+    features = pd.DataFrame(all_data, index=dates)
     features.index.name = "date"
     features.to_parquet(feature_dir / "AAPL_features.parquet")
 
@@ -44,34 +54,28 @@ def test_dataset_getitem(tmp_path):
     feature_dir.mkdir()
 
     dates = pd.date_range("2020-01-01", periods=300, freq="B")
-    features = pd.DataFrame(
-        {
-            "z_score_20d": np.random.randn(300),
-            "z_score_60d": np.random.randn(300),
-            "ma_ratio_20_60": np.random.randn(300),
-            "volume_trend": np.random.randn(300),
-            "volatility_20d": np.random.randn(300),
-            "momentum_20d": np.random.randn(300),
-            "momentum_60d": np.random.randn(300),
-            "momentum_252d": np.random.randn(300),
-            "market_beta_60d": np.random.randn(300),
-            "downside_beta_60d": np.random.randn(300),
-            "realized_vol_20d": np.random.randn(300),
-            "realized_vol_60d": np.random.randn(300),
-            "pe_ratio": np.random.randn(300),
-            "pb_ratio": np.random.randn(300),
-            "roe": np.random.randn(300),
-            "market_cap_log": np.random.randn(300),
-            "parkinson_vol": np.random.randn(300),
-            "garch_vol": np.random.randn(300),
-            "momentum_ratio": np.random.randn(300),
-            "reversal_5d": np.random.randn(300),
-            "price_trend": np.random.randn(300),
-            "gsector": np.full(300, 45),
-            "ggroup": np.full(300, 4510),
-        },
-        index=dates,
-    )
+
+    # Use exact column names from FeatureDataset
+    temporal_cols = FeatureDataset.TEMPORAL_COLS
+    tabular_cols = FeatureDataset.TABULAR_CONT_COLS
+    cat_cols = FeatureDataset.TABULAR_CAT_COLS
+
+    # Create temporal columns (13 features)
+    temporal_data = {col: np.random.randn(300) for col in temporal_cols}
+
+    # Create tabular continuous columns (15 features)
+    tabular_data = {col: np.random.randn(300) for col in tabular_cols}
+
+    # Create categorical columns
+    cat_data = {
+        "gsector": np.full(300, 45),
+        "ggroup": np.full(300, 4510),
+    }
+
+    # Combine all data
+    all_data = {**temporal_data, **tabular_data, **cat_data}
+
+    features = pd.DataFrame(all_data, index=dates)
     features.index.name = "date"
     features.to_parquet(feature_dir / "AAPL_features.parquet")
 

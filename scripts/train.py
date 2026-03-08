@@ -8,15 +8,13 @@ Trains across three validation folds with:
 """
 
 import argparse
-import sys
 from pathlib import Path
 
+import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from src.models import DualEncoder, InfoNCELoss
 from src.models.sampler import GICSHardNegativeSampler
@@ -106,23 +104,47 @@ def main():
 
     args = parser.parse_args()
 
+    # Use CrossRegimeValidator for proper date ranges
     validator = CrossRegimeValidator()
-    validator.print_summary()
 
-    train_start, train_end = validator.get_train_range()
-    val_fold = validator.get_val_fold(args.fold)
+    # Check if we have data for the full date ranges or just test data
+    feature_dir = Path(args.feature_dir)
+    available_files = list(feature_dir.glob("*_features.parquet"))
+
+    if available_files:
+        # Load first file to check date range
+        sample_df = pd.read_parquet(available_files[0], columns=["date"])
+        min_date = sample_df["date"].min()
+        max_date = sample_df["date"].max()
+
+        # If data only covers 2023 (test mode), adjust validation fold dates
+        if min_date >= pd.Timestamp("2023-01-01") and max_date <= pd.Timestamp("2023-12-31"):
+            # Test mode: split 2023 data (Jan-Sep train, Oct-Dec val)
+            train_start = pd.Timestamp("2023-01-01")
+            train_end = pd.Timestamp("2023-09-30")
+            val_start = pd.Timestamp("2023-10-01")
+            val_end = pd.Timestamp("2023-12-31")
+        else:
+            # Full mode: use CrossRegimeValidator dates
+            val_fold = validator.get_val_fold(args.fold)
+            train_start = pd.Timestamp(validator.train_start)
+            train_end = pd.Timestamp(validator.train_end)
+            val_start = pd.Timestamp(val_fold.start)
+            val_end = pd.Timestamp(val_fold.end)
+    else:
+        raise ValueError(f"No feature files found in {args.feature_dir}")
 
     print(f"\nTraining: {train_start} → {train_end}")
-    print(f"Validation: {val_fold.name}")
+    print(f"Validation: {val_start} → {val_end}")
 
     train_dataset = FeatureDataset(
         feature_dir=args.feature_dir,
-        date_range=(train_start, train_end),
+        date_range=(train_start.strftime("%Y-%m-%d"), train_end.strftime("%Y-%m-%d")),
     )
 
     val_dataset = FeatureDataset(
         feature_dir=args.feature_dir,
-        date_range=(val_fold.start, val_fold.end),
+        date_range=(val_start.strftime("%Y-%m-%d"), val_end.strftime("%Y-%m-%d")),
     )
 
     print(f"Train samples: {len(train_dataset)}")
@@ -139,10 +161,19 @@ def main():
         shuffle=True,
     )
 
+    # Get actual dimensions from dataset instance
+    n_temporal = len(FeatureDataset.TEMPORAL_COLS)
+    n_tabular_cont = len(FeatureDataset.TABULAR_CONT_COLS)
+    n_tabular_cat = train_dataset.categorical_dims  # Use actual dimensions from data
+
+    print(
+        f"Model dimensions: temporal={n_temporal}, tabular_cont={n_tabular_cont}, tabular_cat={n_tabular_cat}"
+    )
+
     model = DualEncoder(
-        temporal_input_dim=13,
-        tabular_continuous_dim=15,
-        tabular_categorical_dims=[11, 25],
+        temporal_input_dim=n_temporal,
+        tabular_continuous_dim=n_tabular_cont,
+        tabular_categorical_dims=n_tabular_cat,
     )
 
     loss_fn = InfoNCELoss(temperature=0.07)

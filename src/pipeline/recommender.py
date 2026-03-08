@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import polars as pl
 
-from src.types.common import RecommendationResult
+from src.custom_types.common import RecommendationResult
 
 if TYPE_CHECKING:
     import torch

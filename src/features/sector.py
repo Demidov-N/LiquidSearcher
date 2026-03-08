@@ -17,10 +17,10 @@ class SectorFeatures(FeatureGroup):
         """Initialize sector features."""
         self.name = "sector"
         self._feature_names = [
-            "gics_sector",
-            "gics_industry_group",
-            "gics_sector_str",
-            "gics_industry_group_str",
+            "gsector",  # Integer sector code (matches FeatureDataset expectation)
+            "ggroup",  # Integer industry group code (matches FeatureDataset expectation)
+            "gics_sector_str",  # String sector name (optional)
+            "gics_industry_group_str",  # String industry name (optional)
         ]
         # Mapping dictionaries for consistent encoding
         self._sector_mapping: dict[str, int] = {}
@@ -51,19 +51,23 @@ class SectorFeatures(FeatureGroup):
         """
         result = df.copy()
 
-        # Encode sectors
+        # Encode sectors (use gsector to match FeatureDataset expectation)
         if "gics_sector_str" in result.columns:
-            result["gics_sector"] = result["gics_sector_str"].apply(self._get_sector_code)
+            result["gsector"] = result["gics_sector_str"].apply(self._get_sector_code)
+        elif "gsector" in result.columns:
+            # Already have integer codes, ensure they are int type
+            result["gsector"] = result["gsector"].fillna(-1).astype(int)
         else:
-            result["gics_sector"] = -1
+            result["gsector"] = -1
 
-        # Encode industry groups
+        # Encode industry groups (use ggroup to match FeatureDataset expectation)
         if "gics_industry_group_str" in result.columns:
-            result["gics_industry_group"] = result["gics_industry_group_str"].apply(
-                self._get_industry_code
-            )
+            result["ggroup"] = result["gics_industry_group_str"].apply(self._get_industry_code)
+        elif "ggroup" in result.columns:
+            # Already have integer codes, ensure they are int type
+            result["ggroup"] = result["ggroup"].fillna(-1).astype(int)
         else:
-            result["gics_industry_group"] = -1
+            result["ggroup"] = -1
 
         # Ensure string columns exist (for consistency)
         if "gics_sector_str" not in result.columns:
