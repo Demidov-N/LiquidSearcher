@@ -162,6 +162,21 @@ def load_ohlcv(
         df = _generate_mock_ohlcv(symbols, start_date, end_date, seed=42)
     else:
         df = _fetch_ohlcv_from_wrds(symbols, start_date, end_date)
+        # Normalize WRDS column names and types for downstream processing
+        # Rename columns to standard OHLCV names
+        col_rename = {
+            "ticker": "symbol",
+            "prc": "close",
+            "vol": "volume",
+            "bidlo": "low",
+            "askhi": "high",
+            "shrout": "shares_out",
+        }
+        df = df.rename(columns={k: v for k, v in col_rename.items() if k in df.columns})
+
+        # Convert date column to datetime if it's not already datetime
+        if "date" in df.columns and not pd.api.types.is_datetime64_any_dtype(df["date"]):
+            df["date"] = pd.to_datetime(df["date"])
 
     # Cache the result
     if use_cache:
@@ -255,6 +270,7 @@ def _fetch_ohlcv_from_wrds(
             SELECT
                 a.permno,
                 a.date,
+                a.openprc as open,
                 a.prc,
                 a.ret,
                 a.vol,
@@ -325,6 +341,12 @@ def load_fundamental(
         df = _generate_mock_fundamental(symbols, start_date, end_date, metrics)
     else:
         df = _fetch_fundamental_from_wrds(symbols, start_date, end_date, metrics)
+        # WRDS returns 'tic' column but we need 'symbol' for consistency
+        if "tic" in df.columns and "symbol" not in df.columns:
+            df = df.rename(columns={"tic": "symbol"})
+        # Convert datadate to datetime if it's not already datetime
+        if "datadate" in df.columns and not pd.api.types.is_datetime64_any_dtype(df["datadate"]):
+            df["datadate"] = pd.to_datetime(df["datadate"])
 
     # Cache result
     if use_cache:

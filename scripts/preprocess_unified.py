@@ -71,11 +71,6 @@ def process_symbol_batch(
 
             # Combine into single dataframe
             if isinstance(prices, pd.DataFrame) and isinstance(fundamentals, pd.DataFrame):
-                # Ensure prices has symbol column (add if missing for single-symbol queries)
-                if "symbol" not in prices.columns:
-                    prices["symbol"] = symbol
-                    print(f"    Added missing 'symbol' column for {symbol}")
-
                 # Merge fundamentals into prices (forward fill for daily data)
                 if "date" in fundamentals.columns:
                     fundamentals = fundamentals.rename(columns={"date": "datadate"})
