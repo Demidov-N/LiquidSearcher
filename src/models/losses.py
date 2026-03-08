@@ -1,76 +1,87 @@
-"""Loss functions for dual encoder training."""
+# src/models/losses.py
+"""Loss functions for contrastive learning."""
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F  # noqa: N812
-
-
-class ContrastiveLoss(nn.Module):
-    """Pairwise contrastive loss for learned similarity."""
-
-    def __init__(self, margin: float = 1.0) -> None:
-        """Initialize contrastive loss.
-
-        Args:
-            margin: Margin for triplet loss
-        """
-        super().__init__()
-        self.margin = margin
-
-    def forward(
-        self,
-        embeddings_a: torch.Tensor,
-        embeddings_b: torch.Tensor,
-        labels: torch.Tensor,
-    ) -> torch.Tensor:
-        """Compute contrastive loss between two embedding sets.
-
-        Args:
-            embeddings_a: First set of embeddings (batch, dim)
-            embeddings_b: Second set of embeddings (batch, dim)
-            labels: Binary labels indicating positive/negative pairs (batch,)
-
-        Returns:
-            Scalar loss value
-        """
-        distances = F.pairwise_distance(embeddings_a, embeddings_b)
-        loss = labels * distances.pow(2) + (1 - labels) * F.relu(self.margin - distances).pow(2)
-        return loss.mean()
+import torch.nn.functional as functional
 
 
 class InfoNCELoss(nn.Module):
-    """InfoNCE loss for contrastive learning."""
+    """InfoNCE loss for contrastive learning.
 
-    def __init__(self, temperature: float = 0.07) -> None:
+    Standard contrastive loss that maximizes agreement between positive pairs
+    and minimizes agreement with negative pairs (in-batch negatives).
+
+    Formula: L = -log[ exp(sim(z_i, z_j)/τ) / Σ_k exp(sim(z_i, z_k)/τ) ]
+
+    Where:
+    - z_i = temporal embedding
+    - z_j = tabular embedding (positive pair)
+    - z_k = all other embeddings in batch (negatives)
+    - τ = temperature
+    """
+
+    def __init__(self, temperature: float = 0.07):
         """Initialize InfoNCE loss.
 
         Args:
-            temperature: Temperature parameter for softmax
+            temperature: Temperature parameter (default 0.07)
         """
         super().__init__()
         self.temperature = temperature
 
     def forward(
         self,
-        embeddings_pos: torch.Tensor,
-        embeddings_neg: torch.Tensor,
+        temporal_emb: torch.Tensor,
+        tabular_emb: torch.Tensor,
+        hard_negatives_temporal: torch.Tensor | None = None,
+        hard_negatives_tabular: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Compute InfoNCE loss.
 
         Args:
-            embeddings_pos: Positive pair embeddings (batch, dim)
-            embeddings_neg: Negative sample embeddings (batch, num_neg, dim)
+            temporal_emb: Temporal embeddings (batch, dim)
+            tabular_emb: Tabular embeddings (batch, dim)
+            hard_negatives_temporal: Optional hard negative temporal embeddings
+            hard_negatives_tabular: Optional hard negative tabular embeddings
 
         Returns:
             Scalar loss value
         """
-        batch_size = embeddings_pos.shape[0]
+        batch_size = temporal_emb.size(0)
 
-        pos_sim = torch.sum(embeddings_pos * embeddings_pos, dim=1) / self.temperature
+        # Normalize embeddings
+        temporal_emb = functional.normalize(temporal_emb, dim=1)
+        tabular_emb = functional.normalize(tabular_emb, dim=1)
 
-        neg_sim = torch.matmul(embeddings_pos, embeddings_neg.transpose(1, 2)) / self.temperature
+        # Compute similarity matrix: (batch, batch)
+        # sim[i,j] = similarity between temporal[i] and tabular[j]
+        similarity = torch.matmul(temporal_emb, tabular_emb.t()) / self.temperature
 
-        logits = torch.cat([pos_sim.unsqueeze(1), neg_sim], dim=1)
-        labels = torch.zeros(batch_size, dtype=torch.long, device=embeddings_pos.device)
+        # Labels: positive pairs are on diagonal (i matches i)
+        labels = torch.arange(batch_size, device=similarity.device)
 
-        return F.cross_entropy(logits, labels)
+        # InfoNCE loss: cross entropy with diagonal as positives
+        loss = functional.cross_entropy(similarity, labels)
+
+        return loss
+
+
+class RankSCLLoss(nn.Module):
+    """Rank-supervised contrastive learning loss (placeholder for future).
+
+    Captures ordinal similarity: not just "are these similar?" but
+    "HOW similar are these?" (preserves ranking order).
+
+    To be implemented when ranking data available.
+    """
+
+    def __init__(self, temperature: float = 0.07):
+        super().__init__()
+        self.temperature = temperature
+
+    def forward(self, temporal_emb: torch.Tensor, tabular_emb: torch.Tensor) -> torch.Tensor:
+        """Placeholder - returns InfoNCE for now."""
+        # TODO: Implement proper RankSCL with ordinal constraints
+        infonce = InfoNCELoss(self.temperature)
+        return infonce.forward(temporal_emb, tabular_emb)
