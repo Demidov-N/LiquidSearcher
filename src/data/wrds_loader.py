@@ -398,6 +398,7 @@ def _fetch_fundamental_from_wrds(
 
         # Map metrics to Compustat fields
         # Note: book_val doesn't exist, use seq (stockholders equity) for P/B calculation
+        # Note: gsector/ggroup are in comp.company, not comp.funda - need JOIN
         field_map = {
             "pe_ratio": "epspx",
             "pb_ratio": "seq",  # Use stockholders equity for book value
@@ -405,28 +406,31 @@ def _fetch_fundamental_from_wrds(
             "roe": "ni",
             "debt_equity": "dt",
             "dividend_yield": "dv",
-            "gsector": "gsector",
-            "ggroup": "ggroup",
         }
 
-        fields = ["gvkey", "datadate", "tic", "at", "seq", "ni", "csho", "prcc_f"]
+        fields = ["a.gvkey", "a.datadate", "a.tic", "a.at", "a.seq", "a.ni", "a.csho", "a.prcc_f"]
         for m in metrics:
-            if m in field_map and field_map[m] not in fields:
-                fields.append(field_map[m])
+            if m in field_map and field_map[m] not in [f.split(".")[1] for f in fields]:
+                fields.append(f"a.{field_map[m]}")
+
+        # Add GICS fields from comp.company (joined table)
+        fields.append("c.gsector")
+        fields.append("c.ggroup")
 
         fields_str = ", ".join(fields)
 
-        # Use parameterized query to prevent SQL injection
+        # Use parameterized query with JOIN to comp.company for GICS data
         query = f"""
             SELECT {fields_str}
-            FROM comp.funda
-            WHERE tic = ANY(%(tickers)s)
-            AND datadate BETWEEN %(start_date)s AND %(end_date)s
-            AND indfmt = 'INDL'
-            AND datafmt = 'STD'
-            AND popsrc = 'D'
-            AND consol = 'C'
-            ORDER BY tic, datadate
+            FROM comp.funda a
+            INNER JOIN comp.company c ON a.gvkey = c.gvkey
+            WHERE a.tic = ANY(%(tickers)s)
+            AND a.datadate BETWEEN %(start_date)s AND %(end_date)s
+            AND a.indfmt = 'INDL'
+            AND a.datafmt = 'STD'
+            AND a.popsrc = 'D'
+            AND a.consol = 'C'
+            ORDER BY a.tic, a.datadate
         """
 
         params = {
