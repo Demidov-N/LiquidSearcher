@@ -162,6 +162,20 @@ class FeatureDataset(Dataset):
         required_cols = self.TEMPORAL_COLS + self.TABULAR_CONT_COLS + self.TABULAR_CAT_COLS
         # Only check columns that exist in the dataframe
         available_required = [col for col in required_cols if col in df.columns]
+
+        # Debug: show which columns have NaN
+        in_range_df = df[mask]
+        if len(in_range_df) > 0:
+            nan_cols = []
+            for col in available_required:
+                nan_count = in_range_df[col].isna().sum()
+                if nan_count > 0:
+                    nan_cols.append(f"{col}({nan_count})")
+            if nan_cols:
+                print(
+                    f"  Columns with NaN: {', '.join(nan_cols[:5])}{'...' if len(nan_cols) > 5 else ''}"
+                )
+
         valid_mask = mask & df[available_required].notna().all(axis=1)
 
         valid_rows = df[valid_mask][["symbol", "date"]].copy()
