@@ -68,7 +68,7 @@ class WRDSConnection:
             return
 
         try:
-            import wrds
+            import wrds  # type: ignore[import-not-found, import-untyped]
 
             self._connection = wrds.Connection(
                 wrds_username=self.config.get_username(),
@@ -249,8 +249,8 @@ def _fetch_ohlcv_from_wrds(
         }
 
         assert wrds_conn is not None  # type: ignore
-        df = wrds_conn.raw_sql(query, params=params)
-        return df
+        df = wrds_conn.raw_sql(query, params=params)  # type: ignore[union-attr, no-any-return, attr-defined]
+        return df  # type: ignore[no-any-return]
 
 
 def load_fundamental(
@@ -406,7 +406,7 @@ def _fetch_fundamental_from_wrds(
         }
 
         assert wrds_conn is not None  # Help type checker
-        return wrds_conn.raw_sql(query, params=params)
+        return wrds_conn.raw_sql(query, params=params)  # type: ignore[union-attr, no-any-return, attr-defined]
 
 
 def _convert_format(
