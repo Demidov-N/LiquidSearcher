@@ -397,9 +397,10 @@ def _fetch_fundamental_from_wrds(
             )
 
         # Map metrics to Compustat fields
+        # Note: book_val doesn't exist, use seq (stockholders equity) for P/B calculation
         field_map = {
             "pe_ratio": "epspx",
-            "pb_ratio": "book_val",
+            "pb_ratio": "seq",  # Use stockholders equity for book value
             "market_cap": "mkvalt",
             "roe": "ni",
             "debt_equity": "dt",
