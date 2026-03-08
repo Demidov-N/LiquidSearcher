@@ -267,7 +267,7 @@ def _fetch_ohlcv_from_wrds(
             INNER JOIN crsp.dsenames AS b ON a.permno = b.permno
             WHERE b.ticker = ANY(%(tickers)s)
             AND a.date BETWEEN %(start_date)s AND %(end_date)s
-            AND a.date BETWEEN b.namedt AND b.nameenddt
+            AND a.date BETWEEN b.namedt AND b.nameendt
             ORDER BY b.ticker, a.date
         """
 
