@@ -113,7 +113,7 @@ class WRDSDataLoader:
             FROM wrds.beta
             WHERE permno IN ({permno_list})
             AND date BETWEEN '{start_date}' AND '{end_date}'
-            AND window = {window}
+            AND "window" = {window}
             ORDER BY permno, date
         """
 
