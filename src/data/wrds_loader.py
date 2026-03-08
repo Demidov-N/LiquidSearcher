@@ -213,10 +213,41 @@ class WRDSDataLoader:
         return df["gvkey"].tolist()
 
     def _add_ticker_symbols(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Add ticker symbols to DataFrame based on permno/gvkey."""
-        # Implementation depends on whether df has permno or gvkey
-        # This is a placeholder - actual implementation needs mapping tables
-        return df
+        """Add ticker symbols to DataFrame based on permno.
+        
+        Creates a mapping from CRSP dsenames table and adds 'symbol' column.
+        """
+        if 'permno' not in df.columns:
+            return df
+        
+        # Get unique permnos from the dataframe
+        permnos = df['permno'].unique().tolist()
+        
+        # Query CRSP to get ticker symbols
+        permno_list = ",".join(map(str, permnos))
+        query = f"""
+            SELECT DISTINCT permno, ticker
+            FROM crsp.dsenames
+            WHERE permno IN ({permno_list})
+        """
+        
+        try:
+            mapping_df = self.conn.raw_sql(query)
+            
+            # Create mapping dict
+            permno_to_ticker = dict(zip(mapping_df['permno'], mapping_df['ticker']))
+            
+            # Add symbol column
+            df = df.copy()
+            df['symbol'] = df['permno'].map(permno_to_ticker)
+            
+            return df
+        except Exception as e:
+            logger.warning(f"Could not map permnos to tickers: {e}")
+            # If mapping fails, use permno as symbol as fallback
+            df = df.copy()
+            df['symbol'] = df['permno'].astype(str)
+            return df
 
     def close(self):
         """Close WRDS connection."""
