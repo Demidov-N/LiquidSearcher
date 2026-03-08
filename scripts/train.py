@@ -55,11 +55,13 @@ def train_epoch(
         n_hard = batch["n_hard"]
 
         with torch.no_grad():
-            temporal_emb, tabular_emb = model(
-                batch["temporal"],
-                batch["tabular_cont"],
-                batch["tabular_cat"],
-            )
+            # Move batch to same device as model for metrics computation
+            device = next(model.parameters()).device
+            x_temp = batch["temporal"].to(device)
+            x_tab_cont = batch["tabular_cont"].to(device)
+            x_tab_cat = batch["tabular_cat"].to(device)
+
+            temporal_emb, tabular_emb = model(x_temp, x_tab_cont, x_tab_cat)
 
         metrics = compute_all_metrics(
             model, temporal_emb, tabular_emb, batch_size, n_hard, val_samples=None
