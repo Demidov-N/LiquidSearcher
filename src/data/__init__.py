@@ -1,6 +1,5 @@
-"""Data collection and processing modules."""
+"""Data loading and processing modules."""
 
-from src.data.wrds_loader import WRDSDataLoader
-from src.data.feature_processor import FeatureProcessor
+from src.data.universe import SymbolUniverse
 
-__all__ = ["WRDSDataLoader", "FeatureProcessor"]
+__all__ = ["SymbolUniverse"]
