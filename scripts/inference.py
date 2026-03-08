@@ -107,8 +107,11 @@ def compute_stock_embedding(
         "roe",
     ]
 
-    # Extract tabular features, filling NaN with 0 (model was trained with some NaN features masked)
-    tabular_cont = symbol_df.iloc[pos][tabular_cont_cols].fillna(0.0).astype(float).values
+    # Extract tabular features - keep NaN for TabMixer's native masking
+    # Convert pandas NA/NaN to numpy NaN, then let TabMixer handle masking
+    tabular_cont_raw = symbol_df.iloc[pos][tabular_cont_cols]
+    # Replace pandas NA with numpy NaN, then convert to float
+    tabular_cont = pd.to_numeric(tabular_cont_raw, errors="coerce").values
     # Ensure categorical indices are non-negative (embedding lookup requires >= 0)
     gsector_val = max(0, int(symbol_df.iloc[pos]["gsector"]))
     ggroup_val = max(0, int(symbol_df.iloc[pos]["ggroup"]))
