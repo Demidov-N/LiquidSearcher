@@ -1,0 +1,28 @@
+data:
+  train_period: ["2010-01-01", "2022-12-31"]
+  val_period: ["2023-01-01", "2023-12-31"]
+  test_period: ["2024-01-01", "2024-12-31"]
+  universe: ["Russell 2000", "S&P 400"]
+
+features:
+  beta_window: 60
+  vol_windows: [20, 60]
+  momentum_windows: [21, 63, 126]
+  rolling_z_window: 252
+  winsorize_pct: [1, 99]
+
+model:
+  temporal_encoder: "TCN"
+  temporal_dim: 128
+  fundamental_dim: 128
+  joint_dim: 256
+  temperature: 0.07
+  loss: "RankSCL"
+  
+liquidity:
+  filters:
+    amihud_percentile: 30
+    illiq_zscore: 2.0
+    spread_bps: 50
+    spread_vol_bps: 20
+    zero_return_pct: 5
