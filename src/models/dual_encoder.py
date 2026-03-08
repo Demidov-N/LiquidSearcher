@@ -1,96 +1,129 @@
-"""Dual encoder model for embedding price and fundamental data."""
+# src/models/dual_encoder.py
+"""Dual-Encoder model: BiMT-TCN + TabMixer for contrastive learning."""
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as functional
+
+from src.models.tabmixer import TabMixer
+from src.models.temporal_encoder import TemporalEncoder
 
 
 class DualEncoder(nn.Module):
-    """Dual encoder for price series and fundamental data."""
+    """Dual-encoder model for stock substitute recommendation.
+
+    Architecture:
+    - Temporal Encoder: BiMT-TCN (TCN + Transformer) → 128-dim
+    - Tabular Encoder: TabMixer → 128-dim
+
+    Training: Compute dot product similarity between temporal and tabular
+    Inference: Concatenate [temporal||tabular] → 256-dim joint embedding
+    """
 
     def __init__(
         self,
-        temporal_dim: int = 128,
-        fundamental_dim: int = 128,
-        joint_dim: int = 256,
-        price_seq_len: int = 60,
-        num_fundamental_features: int = 20,
+        temporal_input_dim: int = 13,
+        tabular_continuous_dim: int = 15,
+        tabular_categorical_dims: list[int] | None = None,
+        tabular_embedding_dims: list[int] | None = None,
+        temporal_output_dim: int = 128,
+        tabular_output_dim: int = 128,
+        temperature: float = 0.07,
     ) -> None:
-        """Initialize dual encoder model.
-
-        Args:
-            temporal_dim: Dimension of temporal encoder output
-            fundamental_dim: Dimension of fundamental encoder output
-            joint_dim: Dimension of joint embedding space
-            price_seq_len: Length of price sequence input
-            num_fundamental_features: Number of fundamental features
-        """
+        """Initialize dual-encoder model."""
         super().__init__()
-        self.temporal_dim = temporal_dim
-        self.fundamental_dim = fundamental_dim
-        self.joint_dim = joint_dim
-        self.price_seq_len = price_seq_len
-        self.num_fundamental_features = num_fundamental_features
 
-        self._build_encoders()
+        self.temporal_output_dim = temporal_output_dim
+        self.tabular_output_dim = tabular_output_dim
+        self.temperature = temperature
 
-    def _build_encoders(self) -> None:
-        """Build encoder sub-networks."""
-        self.price_encoder = nn.Sequential(
-            nn.Linear(self.price_seq_len, 256),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(256, self.temporal_dim),
+        # Temporal encoder: BiMT-TCN
+        self.temporal_encoder = TemporalEncoder(
+            input_dim=temporal_input_dim, output_dim=temporal_output_dim
         )
 
-        self.fundamental_encoder = nn.Sequential(
-            nn.Linear(self.num_fundamental_features, 128),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(128, self.fundamental_dim),
+        # Tabular encoder: TabMixer
+        cat_dims = tabular_categorical_dims or []
+        emb_dims = tabular_embedding_dims or []
+
+        # Auto-generate embedding dims if not provided but categorical dims are
+        if cat_dims and not emb_dims:
+            # Default: use min(cardinality // 2, 50) for each categorical feature
+            emb_dims = [min(dim // 2, 50) for dim in cat_dims]
+
+        self.tabular_encoder = TabMixer(
+            continuous_dim=tabular_continuous_dim,
+            categorical_dims=cat_dims,
+            embedding_dims=emb_dims,
+            output_dim=tabular_output_dim,
         )
-
-        self.price_projection = nn.Linear(self.temporal_dim, self.joint_dim)
-        self.fundamental_projection = nn.Linear(self.fundamental_dim, self.joint_dim)
-
-    def encode_price(self, price_features: torch.Tensor) -> torch.Tensor:
-        """Encode price/time-series features to embedding.
-
-        Args:
-            price_features: Price feature tensor of shape (batch, seq_len)
-
-        Returns:
-            Price embedding tensor of shape (batch, joint_dim)
-        """
-        hidden = self.price_encoder(price_features)
-        return self.price_projection(hidden)
-
-    def encode_fundamental(self, fundamental_features: torch.Tensor) -> torch.Tensor:
-        """Encode fundamental features to embedding.
-
-        Args:
-            fundamental_features: Fundamental feature tensor
-                of shape (batch, num_features)
-
-        Returns:
-            Fundamental embedding tensor of shape (batch, joint_dim)
-        """
-        hidden = self.fundamental_encoder(fundamental_features)
-        return self.fundamental_projection(hidden)
 
     def forward(
         self,
-        price_features: torch.Tensor,
-        fundamental_features: torch.Tensor,
+        x_temporal: torch.Tensor,
+        x_tabular_continuous: torch.Tensor,
+        x_tabular_categorical: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Forward pass computing both price and fundamental embeddings.
-
-        Args:
-            price_features: Price feature tensor
-            fundamental_features: Fundamental feature tensor
+        """Forward pass through both encoders.
 
         Returns:
-            Tuple of (price_embedding, fundamental_embedding)
+            temporal_emb: (batch, temporal_output_dim=128)
+            tabular_emb: (batch, tabular_output_dim=128)
         """
-        price_emb = self.encode_price(price_features)
-        fund_emb = self.encode_fundamental(fundamental_features)
-        return price_emb, fund_emb
+        temporal_emb = self.temporal_encoder(x_temporal)
+        tabular_emb = self.tabular_encoder(x_tabular_continuous, x_tabular_categorical)
+
+        return temporal_emb, tabular_emb
+
+    def compute_similarity(
+        self,
+        x_temporal: torch.Tensor,
+        x_tabular_continuous: torch.Tensor,
+        x_tabular_categorical: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Compute cosine similarity between temporal and tabular embeddings.
+
+        Used for contrastive training (CLIP-style dot product loss).
+        """
+        temporal_emb, tabular_emb = self.forward(
+            x_temporal, x_tabular_continuous, x_tabular_categorical
+        )
+
+        # Cosine similarity
+        similarity = functional.cosine_similarity(temporal_emb, tabular_emb, dim=1)
+
+        return similarity
+
+    def get_joint_embedding(
+        self,
+        x_temporal: torch.Tensor,
+        x_tabular_continuous: torch.Tensor,
+        x_tabular_categorical: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Get concatenated joint embedding for inference.
+
+        Used for nearest-neighbor search during inference.
+        Returns: Joint embedding (batch, 256) = [temporal||tabular]
+        """
+        temporal_emb, tabular_emb = self.forward(
+            x_temporal, x_tabular_continuous, x_tabular_categorical
+        )
+
+        # Concatenate for joint representation
+        joint_emb = torch.cat([temporal_emb, tabular_emb], dim=1)
+
+        return joint_emb
+
+    def encode_temporal_only(self, x_temporal: torch.Tensor) -> torch.Tensor:
+        """Encode temporal features only (for fast inference)."""
+        result = self.temporal_encoder(x_temporal)
+        assert isinstance(result, torch.Tensor)
+        return result
+
+    def encode_tabular_only(
+        self, x_tabular_continuous: torch.Tensor, x_tabular_categorical: torch.Tensor | None = None
+    ) -> torch.Tensor:
+        """Encode tabular features only (for fast inference)."""
+        result = self.tabular_encoder(x_tabular_continuous, x_tabular_categorical)
+        assert isinstance(result, torch.Tensor)
+        return result

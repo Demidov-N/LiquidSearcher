@@ -4,6 +4,7 @@ import os
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -25,14 +26,15 @@ class WRDSConfig:
     password: str | None = None
     host: str = "wrds-cloud.wharton.upenn.edu"
     port: int = 9737
+    mock_mode: bool = False
 
-    def get_username(self) -> str:
+    def get_username(self) -> str | None:
         """Get username from config or environment."""
-        return self.username or os.getenv("WRDS_USERNAME", "")
+        return self.username or os.getenv("WRDS_USERNAME")
 
-    def get_password(self) -> str:
+    def get_password(self) -> str | None:
         """Get password from config or environment."""
-        return self.password or os.getenv("WRDS_PASSWORD", "")
+        return self.password or os.getenv("WRDS_PASSWORD")
 
     def has_credentials(self) -> bool:
         """Check if credentials are available."""
@@ -50,7 +52,7 @@ class WRDSConnection:
         """
         self.config = config or WRDSConfig()
         self._connection = None
-        self._mock_mode = False
+        self._mock_mode = self.config.mock_mode
 
     def connect(self) -> None:
         """Establish connection to WRDS.
@@ -66,7 +68,7 @@ class WRDSConnection:
             return
 
         try:
-            import wrds
+            import wrds  # type: ignore[import-not-found, import-untyped]
 
             self._connection = wrds.Connection(
                 wrds_username=self.config.get_username(),
@@ -92,7 +94,7 @@ class WRDSConnection:
         """Check if running in mock mode."""
         return self._mock_mode
 
-    def get_connection(self):
+    def get_connection(self) -> object | None:
         """Get raw WRDS connection object.
 
         Returns:
@@ -140,23 +142,24 @@ def load_ohlcv(
     Returns:
         DataFrame with OHLCV data in requested format
     """
-    # Check for cached data
+    # Determine if we use mock data first
+    config = WRDSConfig()
+    should_use_mock = use_mock or not config.has_credentials()
+
+    # Check for cached data - sort symbols for consistent cache key
+    sorted_symbols = sorted(symbols)
+    cache_key = f"ohlcv_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}_{','.join(sorted_symbols)}"
     if use_cache:
         cache = CacheManager()
-        cache_key = f"ohlcv_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}_{len(symbols)}symbols"
         cached = cache.get(cache_key)
         if cached is not None:
             return _convert_format(cached, output_format)
-
-    # Determine if we use mock data
-    config = WRDSConfig()
-    should_use_mock = use_mock or not config.has_credentials()
 
     if frequency != "D":
         raise NotImplementedError("Only daily frequency supported")
 
     if should_use_mock:
-        df = _generate_mock_ohlcv(symbols, start_date, end_date)
+        df = _generate_mock_ohlcv(symbols, start_date, end_date, seed=42)
     else:
         df = _fetch_ohlcv_from_wrds(symbols, start_date, end_date)
 
@@ -172,8 +175,10 @@ def _generate_mock_ohlcv(
     symbols: list[str],
     start_date: datetime,
     end_date: datetime,
+    seed: int = 42,
 ) -> pd.DataFrame:
     """Generate mock OHLCV data for testing/development."""
+    np.random.seed(seed)
     # Generate business days
     dates = pd.date_range(start=start_date, end=end_date, freq="B")
 
@@ -211,11 +216,13 @@ def _fetch_ohlcv_from_wrds(
 
     with WRDSConnection(config) as conn:
         wrds_conn = conn.get_connection()
+        if wrds_conn is None:
+            raise RuntimeError(
+                "Cannot fetch from WRDS: connection not available (mock mode or no credentials)"
+            )
 
-        # Build SQL query
-        tickers_str = ", ".join([f"'{s.upper()}'" for s in symbols])
-
-        query = f"""
+        # Use parameterized query to prevent SQL injection
+        query = """
             SELECT
                 a.permno,
                 a.date,
@@ -229,14 +236,21 @@ def _fetch_ohlcv_from_wrds(
                 b.ticker
             FROM crsp.dsf AS a
             INNER JOIN crsp.dsenames AS b ON a.permno = b.permno
-            WHERE b.ticker IN ({tickers_str})
-            AND a.date BETWEEN '{start_date.strftime("%Y-%m-%d")}' AND '{end_date.strftime("%Y-%m-%d")}'
+            WHERE b.ticker = ANY(%(tickers)s)
+            AND a.date BETWEEN %(start_date)s AND %(end_date)s
             AND a.date BETWEEN b.namedt AND b.nameenddt
             ORDER BY b.ticker, a.date
         """
 
-        df = wrds_conn.raw_sql(query)
-        return df
+        params = {
+            "tickers": [s.upper() for s in symbols],
+            "start_date": start_date.strftime("%Y-%m-%d"),
+            "end_date": end_date.strftime("%Y-%m-%d"),
+        }
+
+        assert wrds_conn is not None  # type: ignore
+        df = wrds_conn.raw_sql(query, params=params)  # type: ignore[union-attr, no-any-return, attr-defined]
+        return df  # type: ignore[no-any-return]
 
 
 def load_fundamental(
@@ -265,17 +279,18 @@ def load_fundamental(
     if metrics is None:
         metrics = ["pe_ratio", "pb_ratio", "market_cap", "roe", "debt_equity", "gsector", "ggroup"]
 
-    # Check cache
+    # Determine if we use mock data first
+    config = WRDSConfig()
+    should_use_mock = use_mock or not config.has_credentials()
+
+    # Check cache - sort symbols for consistent cache key
+    sorted_symbols = sorted(symbols)
+    cache_key = f"fundamental_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}_{','.join(sorted_symbols)}"
     if use_cache:
         cache = CacheManager()
-        cache_key = f"fundamental_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}_{len(symbols)}symbols"
         cached = cache.get(cache_key)
         if cached is not None:
             return _convert_format(cached, output_format)
-
-    # Determine if we use mock data
-    config = WRDSConfig()
-    should_use_mock = use_mock or not config.has_credentials()
 
     if should_use_mock:
         df = _generate_mock_fundamental(symbols, start_date, end_date, metrics)
@@ -295,8 +310,10 @@ def _generate_mock_fundamental(
     start_date: datetime,
     end_date: datetime,
     metrics: list[str],
+    seed: int = 42,
 ) -> pd.DataFrame:
     """Generate mock fundamental data."""
+    np.random.seed(seed)
     # Generate fiscal year-ends
     years = range(start_date.year, end_date.year + 1)
 
@@ -345,8 +362,10 @@ def _fetch_fundamental_from_wrds(
 
     with WRDSConnection(config) as conn:
         wrds_conn = conn.get_connection()
-
-        tickers_str = ", ".join([f"'{s.upper()}'" for s in symbols])
+        if wrds_conn is None:
+            raise RuntimeError(
+                "Cannot fetch from WRDS: connection not available (mock mode or no credentials)"
+            )
 
         # Map metrics to Compustat fields
         field_map = {
@@ -367,11 +386,12 @@ def _fetch_fundamental_from_wrds(
 
         fields_str = ", ".join(fields)
 
+        # Use parameterized query to prevent SQL injection
         query = f"""
             SELECT {fields_str}
             FROM comp.funda
-            WHERE tic IN ({tickers_str})
-            AND datadate BETWEEN '{start_date.strftime("%Y-%m-%d")}' AND '{end_date.strftime("%Y-%m-%d")}'
+            WHERE tic = ANY(%(tickers)s)
+            AND datadate BETWEEN %(start_date)s AND %(end_date)s
             AND indfmt = 'INDL'
             AND datafmt = 'STD'
             AND popsrc = 'D'
@@ -379,7 +399,14 @@ def _fetch_fundamental_from_wrds(
             ORDER BY tic, datadate
         """
 
-        return wrds_conn.raw_sql(query)
+        params = {
+            "tickers": [s.upper() for s in symbols],
+            "start_date": start_date.strftime("%Y-%m-%d"),
+            "end_date": end_date.strftime("%Y-%m-%d"),
+        }
+
+        assert wrds_conn is not None  # Help type checker
+        return wrds_conn.raw_sql(query, params=params)  # type: ignore[union-attr, no-any-return, attr-defined]
 
 
 def _convert_format(
@@ -418,6 +445,233 @@ def stream_ohlcv_batches(
     n_rows = len(data)
     for i in range(0, n_rows, batch_size):
         if output_format == "polars":
+            assert isinstance(data, pl.DataFrame)  # type: ignore
             yield data.slice(i, batch_size)
         else:
-            yield data.iloc[i : i + batch_size]
+            yield data.iloc[i : i + batch_size]  # type: ignore
+
+
+class WRDSDataLoader:
+    """Unified WRDS data loader for CRSP and Compustat data.
+
+    Combines price data (CRSP) and fundamental data (Compustat)
+    with automatic CCM linking and parquet caching.
+
+    Args:
+        wrds_username: WRDS username (or "mock" for mock mode)
+        wrds_password: WRDS password
+        cache_dir: Directory for parquet cache files
+        mock_mode: If True, generate synthetic data without WRDS connection
+    """
+
+    def __init__(
+        self,
+        wrds_username: str | None = None,
+        wrds_password: str | None = None,
+        cache_dir: Path | None = None,
+        mock_mode: bool = False,
+    ):
+        """Initialize unified data loader."""
+        self._config = WRDSConfig(
+            username=wrds_username,
+            password=wrds_password,
+            mock_mode=mock_mode,
+        )
+        self._mock_mode = mock_mode or not self._config.has_credentials()
+        self.cache = CacheManager(cache_dir=cache_dir)
+
+    def load_prices(
+        self,
+        symbols: list[str],
+        start_date: datetime,
+        end_date: datetime,
+        use_cache: bool = True,
+    ) -> pd.DataFrame:
+        """Load price data (CRSP daily OHLCV).
+
+        Args:
+            symbols: List of ticker symbols
+            start_date: Start date for data
+            end_date: End date for data
+            use_cache: Whether to use cached data
+
+        Returns:
+            DataFrame with OHLCV price data
+        """
+        cache_key = (
+            f"prices_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}_"
+            f"{','.join(sorted(symbols))}"
+        )
+
+        if use_cache:
+            cached = self.cache.get(cache_key)
+            if cached is not None:
+                return cached
+
+        if self._mock_mode:
+            df = _generate_mock_ohlcv(symbols, start_date, end_date, seed=42)
+        else:
+            df = _fetch_ohlcv_from_wrds(symbols, start_date, end_date)
+
+        if use_cache:
+            self.cache.set(cache_key, df)
+
+        return df
+
+    def load_fundamentals(
+        self,
+        symbols: list[str],
+        start_date: datetime,
+        end_date: datetime,
+        frequency: str = "annual",
+        use_cache: bool = True,
+    ) -> pd.DataFrame:
+        """Load fundamental data (Compustat with GICS).
+
+        Args:
+            symbols: List of ticker symbols
+            start_date: Start date for data
+            end_date: End date for data
+            frequency: "annual" or "quarterly"
+            use_cache: Whether to use cached data
+
+        Returns:
+            DataFrame with fundamental data including GICS codes
+        """
+        cache_key = (
+            f"fundamentals_{frequency}_{start_date.strftime('%Y%m%d')}_"
+            f"{end_date.strftime('%Y%m%d')}_{','.join(sorted(symbols))}"
+        )
+
+        if use_cache:
+            cached = self.cache.get(cache_key)
+            if cached is not None:
+                return cached
+
+        metrics = [
+            "pe_ratio",
+            "pb_ratio",
+            "market_cap",
+            "roe",
+            "debt_equity",
+            "dividend_yield",
+            "gsector",
+            "ggroup",
+        ]
+
+        if self._mock_mode:
+            df = _generate_mock_fundamental(symbols, start_date, end_date, metrics, seed=42)
+        else:
+            df = _fetch_fundamental_from_wrds(symbols, start_date, end_date, metrics)
+
+        if use_cache:
+            self.cache.set(cache_key, df)
+
+        return df
+
+    def load_merged(
+        self,
+        symbols: list[str],
+        start_date: datetime,
+        end_date: datetime,
+        use_cache: bool = True,
+    ) -> pd.DataFrame:
+        """Load merged price and fundamental data with CCM linking.
+
+        Args:
+            symbols: List of ticker symbols
+            start_date: Start date for data
+            end_date: End date for data
+            use_cache: Whether to use cached data
+
+        Returns:
+            DataFrame with both price and fundamental columns
+        """
+        cache_key = (
+            f"merged_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}_"
+            f"{','.join(sorted(symbols))}"
+        )
+
+        if use_cache:
+            cached = self.cache.get(cache_key)
+            if cached is not None:
+                return cached
+
+        # Load both datasets
+        prices_df = self.load_prices(symbols, start_date, end_date, use_cache=True)
+        fund_df = self.load_fundamentals(
+            symbols, start_date, end_date, frequency="annual", use_cache=True
+        )
+
+        # Merge on symbol and date (using forward fill for fundamentals)
+        # This is a simplified CCM merge for mock mode
+        merged = self._merge_price_fundamentals(prices_df, fund_df)
+
+        if use_cache:
+            self.cache.set(cache_key, merged)
+
+        return merged
+
+    def _merge_price_fundamentals(
+        self,
+        prices_df: pd.DataFrame,
+        fund_df: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """Merge price and fundamental data using merge_asof for efficient forward-fill.
+
+        Args:
+            prices_df: Price data DataFrame
+            fund_df: Fundamental data DataFrame
+
+        Returns:
+            Merged DataFrame
+        """
+        if prices_df.empty or fund_df.empty:
+            # Return empty frame with expected columns
+            return pd.DataFrame()
+
+        # Ensure date columns are datetime
+        prices_df = prices_df.copy()
+        fund_df = fund_df.copy()
+
+        if "date" not in prices_df.columns:
+            # Try to find date column
+            for col in prices_df.columns:
+                if "date" in col.lower():
+                    prices_df["date"] = pd.to_datetime(prices_df[col])
+                    break
+        else:
+            prices_df["date"] = pd.to_datetime(prices_df["date"])
+
+        if "datadate" in fund_df.columns:
+            fund_df["date"] = pd.to_datetime(fund_df["datadate"])
+
+        # Use merge_asof for efficient forward-fill merging (O(N log N) instead of O(N*M))
+        # First sort both dataframes by symbol and date
+        prices_df = prices_df.sort_values(["symbol", "date"])
+        fund_df = fund_df.sort_values(["symbol", "date"])
+
+        # Perform merge_asof for each symbol
+        merged_dfs = []
+        for symbol in prices_df["symbol"].unique():
+            sym_prices = prices_df[prices_df["symbol"] == symbol]
+            sym_fund = fund_df[fund_df["symbol"] == symbol]
+
+            if sym_fund.empty:
+                # No fundamental data, just use price data
+                merged_dfs.append(sym_prices)
+                continue
+
+            # Use merge_asof to forward-fill fundamental data to match daily prices
+            merged = pd.merge_asof(
+                sym_prices,
+                sym_fund,
+                on="date",
+                direction="backward",  # Use most recent fundamental data
+                suffixes=("", "_fund"),
+            )
+            merged_dfs.append(merged)
+
+        result = pd.concat(merged_dfs, ignore_index=True) if merged_dfs else pd.DataFrame()
+
+        return result
