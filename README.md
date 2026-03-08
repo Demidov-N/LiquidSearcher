@@ -51,9 +51,72 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Quick Start
+## Data Processing and Training Pipeline
 
-### 1. Load Data from WRDS
+### Prerequisites
+
+Set your WRDS credentials (required for real data):
+```bash
+export WRDS_USERNAME="your_username"
+export WRDS_PASSWORD="your_password"
+```
+
+Or use mock data for testing (no credentials needed):
+```bash
+# Mock data will be auto-generated
+```
+
+### Quick Start - Test on Small Subset
+
+**1. Preprocess Data (3 stocks for testing):**
+```bash
+python -m scripts.preprocess_unified \
+  --symbols AAPL MSFT GOOGL \
+  --start-date 2023-01-01 \
+  --end-date 2023-12-31
+```
+
+**2. Train Model:**
+```bash
+# Quick test (1-5 epochs)
+python -m scripts.train --fold 0 --epochs 5 --batch-size 2
+
+# Full training (50 epochs)
+python -m scripts.train --fold 0 --epochs 50 --batch-size 32
+```
+
+### Full Production Pipeline
+
+**1. Preprocess All Data (2,400 stocks):**
+```bash
+# This takes 2-4 hours for full dataset
+python -m scripts.preprocess_unified \
+  --start-date 2010-01-01 \
+  --end-date 2023-12-31
+```
+
+**2. Train All Validation Folds:**
+```bash
+# Fold 0: COVID Crash + Recovery (2020)
+python -m scripts.train --fold 0 --epochs 50 --batch-size 32
+
+# Fold 1: Meme Stocks + Rate Shock (2021-2022)
+python -m scripts.train --fold 1 --epochs 50 --batch-size 32
+
+# Fold 2: AI Boom / Soft Landing (2023)
+python -m scripts.train --fold 2 --epochs 50 --batch-size 32
+```
+
+**3. Final Test Evaluation (NEVER touch until training complete):**
+```bash
+# Test set: 2024-02-01 to 2024-12-31
+# Only run after all folds trained and validated
+python -m scripts.train --fold 0 --epochs 1 --batch-size 32 \
+  --feature-dir data/processed/features \
+  --start-date 2024-02-01 --end-date 2024-12-31
+```
+
+### Manual Data Loading (Python API)
 
 ```python
 from src.data.wrds_loader import WRDSLoader
@@ -76,7 +139,7 @@ fundamentals = loader.load_fundamentals(
 )
 ```
 
-### 2. Engineer Features
+### Feature Engineering (Python API)
 
 ```python
 from src.features import FeatureEngineer
@@ -96,7 +159,7 @@ features = engineer.compute_all_features(prices, fundamentals)
 # - sector: GICS codes (gsector, ggroup, gind, gsubind)
 ```
 
-### 3. Train Dual-Encoder Model
+### Training
 
 ```python
 import torch
@@ -205,11 +268,33 @@ LiquidSearcher/
 
 ### Training
 
-- **Loss**: InfoNCE (CLIP-style contrastive learning)
+**Configuration:**
+- **Loss**: InfoNCE (CLIP-style contrastive learning with temperature=0.07)
 - **Negative Sampling**: GICS-structured hard negatives
   - Level 1: Same ggroup, different beta
   - Level 2: Same gsector, different ggroup
 - **Optimizer**: AdamW (lr=1e-4, weight_decay=0.01)
+- **Batch Size**: 32 (adjust based on GPU memory)
+- **Epochs**: 50 per fold
+- **Window Size**: 60 days of history per sample
+
+**Training Metrics:**
+- **Loss**: InfoNCE loss value
+- **Alignment**: Cosine similarity between temporal/tabular embeddings (same stock)
+- **Val Loss**: Validation InfoNCE loss
+- **Val Alignment**: Validation alignment score
+- **Sector Silhouette**: Clustering quality by GICS sector (target >0.1)
+
+**Cross-Regime Validation:**
+Training uses temporal splits to prevent data leakage:
+- **Training**: 2010-01-01 to 2018-12-31 (after 252-day purge)
+- **Fold 0**: 2020 (COVID crash + recovery)
+- **Fold 1**: 2021-2022 (Meme stocks + rate shock)
+- **Fold 2**: 2023 (AI boom / soft landing)
+- **Test**: 2024-02-01 to 2024-12-31 (never touch until completely done)
+
+**Checkpoints:**
+Best model per fold saved to `models/checkpoints/fold{best,final}.pt` based on validation silhouette score.
 
 ## Testing
 
