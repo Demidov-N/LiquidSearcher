@@ -94,12 +94,15 @@ def compute_sector_silhouette(
     embeddings_list = []
     labels_list = []
 
+    # Get model device
+    device = next(model.parameters()).device
+
     with torch.no_grad():
         for sample in val_samples:
             # Get joint embedding
-            temporal = sample["temporal"].unsqueeze(0)
-            tabular_cont = sample["tabular_cont"].unsqueeze(0)
-            tabular_cat = sample["tabular_cat"].unsqueeze(0)
+            temporal = sample["temporal"].unsqueeze(0).to(device)
+            tabular_cont = sample["tabular_cont"].unsqueeze(0).to(device)
+            tabular_cat = sample["tabular_cat"].unsqueeze(0).to(device)
 
             joint_emb = model.get_joint_embedding(temporal, tabular_cont, tabular_cat)
             embeddings_list.append(joint_emb.squeeze(0).cpu().numpy())
