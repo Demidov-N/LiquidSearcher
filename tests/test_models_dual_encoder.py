@@ -45,8 +45,8 @@ def test_dual_encoder_joint_embedding():
     assert joint_emb.shape == (16, 256)  # 128 + 128
 
 
-def test_dual_encoder_similarity():
-    """Test similarity computation for training."""
+def test_dual_encoder_pairwise_similarity():
+    """Test pairwise similarity diagnostic (inference utility, not training signal)."""
     model = DualEncoder(temporal_input_dim=13, tabular_continuous_dim=15)
     model.eval()
 
@@ -55,8 +55,7 @@ def test_dual_encoder_similarity():
     x_tab_cat = torch.randint(0, 5, (16, 2))
 
     with torch.no_grad():
-        # Training mode: get similarity score
-        similarity = model.compute_similarity(x_temp, x_tab_cont, x_tab_cat)
+        similarity = model.compute_pairwise_similarity(x_temp, x_tab_cont, x_tab_cat)
 
     assert similarity.shape == (16,)  # One similarity per batch element
     assert torch.all(similarity >= -1) and torch.all(similarity <= 1)  # Cosine similarity range

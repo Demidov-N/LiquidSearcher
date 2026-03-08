@@ -28,14 +28,15 @@ class DualEncoder(nn.Module):
         tabular_embedding_dims: list[int] | None = None,
         temporal_output_dim: int = 128,
         tabular_output_dim: int = 128,
-        temperature: float = 0.07,
     ) -> None:
-        """Initialize dual-encoder model."""
+        """Initialize dual-encoder model.
+
+        Note: Temperature is owned by InfoNCELoss, not the model.
+        """
         super().__init__()
 
         self.temporal_output_dim = temporal_output_dim
         self.tabular_output_dim = tabular_output_dim
-        self.temperature = temperature
 
         # Temporal encoder: BiMT-TCN
         self.temporal_encoder = TemporalEncoder(
@@ -75,24 +76,25 @@ class DualEncoder(nn.Module):
 
         return temporal_emb, tabular_emb
 
-    def compute_similarity(
+    def compute_pairwise_similarity(
         self,
         x_temporal: torch.Tensor,
         x_tabular_continuous: torch.Tensor,
         x_tabular_categorical: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """Compute cosine similarity between temporal and tabular embeddings.
+        """Compute element-wise cosine similarity between temporal and tabular embeddings.
 
-        Used for contrastive training (CLIP-style dot product loss).
+        NOTE: This is an inference diagnostic, not the training loss signal.
+        InfoNCE training uses the full (batch x batch) similarity matrix internally.
+
+        Returns:
+            similarity: (batch,) cosine similarity per sample, in range [-1, 1]
         """
         temporal_emb, tabular_emb = self.forward(
             x_temporal, x_tabular_continuous, x_tabular_categorical
         )
 
-        # Cosine similarity
-        similarity = functional.cosine_similarity(temporal_emb, tabular_emb, dim=1)
-
-        return similarity
+        return functional.cosine_similarity(temporal_emb, tabular_emb, dim=1)
 
     def get_joint_embedding(
         self,

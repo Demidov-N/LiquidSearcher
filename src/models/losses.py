@@ -37,13 +37,13 @@ class InfoNCELoss(nn.Module):
         hard_negatives_temporal: torch.Tensor | None = None,
         hard_negatives_tabular: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """Compute InfoNCE loss.
+        """Compute symmetric InfoNCE loss.
 
         Args:
             temporal_emb: Temporal embeddings (batch, dim)
             tabular_emb: Tabular embeddings (batch, dim)
-            hard_negatives_temporal: Optional hard negative temporal embeddings
-            hard_negatives_tabular: Optional hard negative tabular embeddings
+            hard_negatives_temporal: Optional hard negative temporal embeddings (n_hard, dim)
+            hard_negatives_tabular: Optional hard negative tabular embeddings (n_hard, dim)
 
         Returns:
             Scalar loss value
@@ -51,18 +51,35 @@ class InfoNCELoss(nn.Module):
         batch_size = temporal_emb.size(0)
 
         # Normalize embeddings
-        temporal_emb = functional.normalize(temporal_emb, dim=1)
-        tabular_emb = functional.normalize(tabular_emb, dim=1)
+        temporal_norm = functional.normalize(temporal_emb, dim=1)
+        tabular_norm = functional.normalize(tabular_emb, dim=1)
 
-        # Compute similarity matrix: (batch, batch)
-        # sim[i,j] = similarity between temporal[i] and tabular[j]
-        similarity = torch.matmul(temporal_emb, tabular_emb.t()) / self.temperature
+        # Extend denominator with hard negatives if provided
+        if hard_negatives_tabular is not None:
+            hard_tab_norm = functional.normalize(hard_negatives_tabular, dim=1)
+            all_tabular = torch.cat([tabular_norm, hard_tab_norm], dim=0)
+        else:
+            all_tabular = tabular_norm
+
+        if hard_negatives_temporal is not None:
+            hard_temp_norm = functional.normalize(hard_negatives_temporal, dim=1)
+            all_temporal = torch.cat([temporal_norm, hard_temp_norm], dim=0)
+        else:
+            all_temporal = temporal_norm
+
+        # Similarity matrices: temporal→tabular and tabular→temporal
+        # sim_t2tab[i,j] = similarity between temporal[i] and tabular[j]
+        sim_t2tab = torch.matmul(temporal_norm, all_tabular.t()) / self.temperature
+        sim_tab2t = torch.matmul(tabular_norm, all_temporal.t()) / self.temperature
 
         # Labels: positive pairs are on diagonal (i matches i)
-        labels = torch.arange(batch_size, device=similarity.device)
+        labels = torch.arange(batch_size, device=temporal_norm.device)
 
-        # InfoNCE loss: cross entropy with diagonal as positives
-        loss = functional.cross_entropy(similarity, labels)
+        # Symmetric InfoNCE: average loss in both directions (CLIP-style)
+        loss = 0.5 * (
+            functional.cross_entropy(sim_t2tab, labels)
+            + functional.cross_entropy(sim_tab2t, labels)
+        )
 
         return loss
 
@@ -79,9 +96,10 @@ class RankSCLLoss(nn.Module):
     def __init__(self, temperature: float = 0.07):
         super().__init__()
         self.temperature = temperature
+        # Reuse InfoNCELoss instance to avoid reconstruction on every forward call
+        self._infonce = InfoNCELoss(temperature)
 
     def forward(self, temporal_emb: torch.Tensor, tabular_emb: torch.Tensor) -> torch.Tensor:
         """Placeholder - returns InfoNCE for now."""
         # TODO: Implement proper RankSCL with ordinal constraints
-        infonce = InfoNCELoss(self.temperature)
-        return infonce.forward(temporal_emb, tabular_emb)
+        return self._infonce(temporal_emb, tabular_emb)

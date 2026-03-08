@@ -47,8 +47,8 @@ def test_end_to_end_forward():
     assert temporal_emb.shape == (batch_size, 128)
     assert tabular_emb.shape == (batch_size, 128)
 
-    # Compute similarity
-    similarity = model.compute_similarity(x_temporal, x_tabular_cont, x_tabular_cat)
+    # Compute pairwise similarity (inference diagnostic)
+    similarity = model.compute_pairwise_similarity(x_temporal, x_tabular_cont, x_tabular_cat)
     assert similarity.shape == (batch_size,)
 
     # Get joint embedding

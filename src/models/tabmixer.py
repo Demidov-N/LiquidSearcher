@@ -10,8 +10,12 @@ from src.models.base import BaseEncoder
 class TabMixer(BaseEncoder):
     """TabMixer encoder for tabular data.
 
-    MLP-Mixer architecture: channel-wise mixing + instance-wise mixing
+    Stacked residual MLP blocks (inspired by MLP-Mixer) for tabular encoding.
     Purpose-built for tabular data, handles missing values natively.
+
+    Each ResMLPBlock applies two sequential MLP residual sub-layers (pre-norm),
+    which is the tabular analogue of the token-mixing / channel-mixing structure
+    from the original MLP-Mixer paper, adapted to the non-token input setting.
 
     From 2025 research: <0.01% FLOPs of FT-Transformer, handles missing data.
     """
@@ -58,9 +62,9 @@ class TabMixer(BaseEncoder):
         # Initial linear projection
         self.input_proj = nn.Linear(self.input_features, hidden_dim)
 
-        # Mixer blocks
+        # Residual MLP blocks
         self.mixer_blocks = nn.ModuleList(
-            [MixerBlock(hidden_dim, expansion_factor, dropout) for _ in range(mixer_layers)]
+            [ResMLPBlock(hidden_dim, expansion_factor, dropout) for _ in range(mixer_layers)]
         )
 
         # Output projection
@@ -109,15 +113,20 @@ class TabMixer(BaseEncoder):
         return out
 
 
-class MixerBlock(nn.Module):
-    """Single Mixer block: token mixing + channel mixing."""
+class ResMLPBlock(nn.Module):
+    """Residual MLP block with two sequential pre-norm sub-layers.
+
+    Applies two stacked MLP residual connections, analogous to the
+    token-mixing and channel-mixing branches in MLP-Mixer but adapted
+    for flat tabular vectors (no token axis).
+    """
 
     def __init__(self, hidden_dim: int, expansion_factor: int = 4, dropout: float = 0.1) -> None:
         super().__init__()
 
-        # Token mixing (mix across features)
-        self.token_norm = nn.LayerNorm(hidden_dim)
-        self.token_mlp = nn.Sequential(
+        # First sub-layer
+        self.norm1 = nn.LayerNorm(hidden_dim)
+        self.mlp1 = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim * expansion_factor),
             nn.GELU(),
             nn.Dropout(dropout),
@@ -125,9 +134,9 @@ class MixerBlock(nn.Module):
             nn.Dropout(dropout),
         )
 
-        # Channel mixing (mix within features)
-        self.channel_norm = nn.LayerNorm(hidden_dim)
-        self.channel_mlp = nn.Sequential(
+        # Second sub-layer
+        self.norm2 = nn.LayerNorm(hidden_dim)
+        self.mlp2 = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim * expansion_factor),
             nn.GELU(),
             nn.Dropout(dropout),
@@ -136,17 +145,7 @@ class MixerBlock(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward through mixer block."""
-        # Token mixing
-        residual = x
-        x = self.token_norm(x)
-        x = self.token_mlp(x)
-        x = x + residual
-
-        # Channel mixing
-        residual = x
-        x = self.channel_norm(x)
-        x = self.channel_mlp(x)
-        x = x + residual
-
+        """Forward through residual MLP block."""
+        x = x + self.mlp1(self.norm1(x))
+        x = x + self.mlp2(self.norm2(x))
         return x

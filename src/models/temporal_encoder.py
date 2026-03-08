@@ -68,7 +68,7 @@ class TemporalEncoder(BaseEncoder):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through BiMT-TCN."""
-        batch_size, seq_len, _ = x.shape
+        _batch, seq_len, _features = x.shape
 
         # TCN: Local patterns (batch, seq_len, transformer_dim)
         out = self.tcn(x)
@@ -76,8 +76,11 @@ class TemporalEncoder(BaseEncoder):
         # Positional encoding
         out = self.pos_encoder(out)
 
+        # Causal mask: prevents each position from attending to future timesteps
+        causal_mask = nn.Transformer.generate_square_subsequent_mask(seq_len, device=out.device)
+
         # Transformer: Global dependencies (batch, seq_len, transformer_dim)
-        out = self.transformer(out)
+        out = self.transformer(out, mask=causal_mask, is_causal=True)
 
         # Global average pooling over time (batch, transformer_dim)
         out = out.transpose(1, 2)  # (batch, transformer_dim, seq_len)
