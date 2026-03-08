@@ -78,18 +78,64 @@ def validate_fold(
     model: nn.Module,
     val_dataset: FeatureDataset,
     trainer: ContrastiveTrainer,
+    loss_fn: nn.Module,
     n_val_samples: int = 100,
 ) -> dict:
     """Run validation on a fold and return metrics."""
     model.eval()
 
+    # Collect validation samples
     val_samples = [val_dataset[i] for i in range(min(n_val_samples, len(val_dataset)))]
 
+    # Compute silhouette score
     from src.training.metrics import compute_sector_silhouette
 
     silhouette = compute_sector_silhouette(model, val_samples)
 
-    return {"sector_silhouette": silhouette}
+    # Compute validation loss and metrics by batching samples
+    val_metrics = {
+        "loss": [],
+        "alignment": [],
+        "hard_neg_similarity": [],
+    }
+
+    batch_size = 32  # Process in batches for efficiency
+    device = next(model.parameters()).device
+
+    with torch.no_grad():
+        for i in range(0, len(val_samples), batch_size):
+            batch_samples = val_samples[i : i + batch_size]
+
+            # Stack samples into batch
+            temporal = torch.stack([s["temporal"] for s in batch_samples]).to(device)
+            tabular_cont = torch.stack([s["tabular_cont"] for s in batch_samples]).to(device)
+            tabular_cat = torch.stack([s["tabular_cat"] for s in batch_samples]).to(device)
+
+            # Forward pass
+            temporal_emb, tabular_emb = model(temporal, tabular_cont, tabular_cat)
+
+            # Compute loss (InfoNCE - no hard negatives in validation)
+            loss = loss_fn(temporal_emb, tabular_emb)
+            val_metrics["loss"].append(loss.item())
+
+            # Compute alignment
+            from src.training.metrics import compute_alignment_score
+
+            alignment = compute_alignment_score(temporal_emb, tabular_emb)
+            val_metrics["alignment"].append(alignment)
+
+            # Hard negative similarity (0 hard negatives in validation batch)
+            val_metrics["hard_neg_similarity"].append(0.0)
+
+    # Average metrics
+    avg_metrics = {k: sum(v) / len(v) if v else 0.0 for k, v in val_metrics.items()}
+
+    return {
+        "sector_silhouette": silhouette,
+        "val_loss": avg_metrics["loss"],
+        "val_alignment": avg_metrics["alignment"],
+        "val_hard_neg_similarity": avg_metrics["hard_neg_similarity"],
+    }
 
 
 def main():
@@ -203,8 +249,12 @@ def main():
         )
 
         if epoch % 5 == 0 or epoch == args.epochs - 1:
-            val_metrics = validate_fold(model, val_dataset, trainer)
-            print(f"Val Silhouette: {val_metrics['sector_silhouette']:.3f}")
+            val_metrics = validate_fold(model, val_dataset, trainer, loss_fn)
+            print(
+                f"Val Loss: {val_metrics['val_loss']:.4f}, "
+                f"Align: {val_metrics['val_alignment']:.3f}, "
+                f"Sil: {val_metrics['sector_silhouette']:.3f}"
+            )
 
             if val_metrics["sector_silhouette"] > best_silhouette:
                 best_silhouette = val_metrics["sector_silhouette"]
