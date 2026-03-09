@@ -33,8 +33,14 @@ ENV/
 *.swo
 *~
 
-# Data files (large)
-data/
+# Data files (large) - root level only
+/data/
+!/data/.gitkeep
+
+# But DO NOT ignore src/data - it's a Python package
+!/src/data/
+
+# Data file formats
 *.parquet
 *.csv
 *.feather
