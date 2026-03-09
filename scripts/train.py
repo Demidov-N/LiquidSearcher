@@ -27,6 +27,10 @@ def parse_args():
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--checkpoint-dir", type=str, default="checkpoints")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--samples-per-epoch", type=int, default=None,
+                    help="Subsample training set each epoch (None = full dataset)")
+    parser.add_argument("--warmup-epochs", type=int, default=5)
+
     return parser.parse_args()
 
 
@@ -50,6 +54,7 @@ def main():
         symbols=args.symbols,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
+        samples_per_epoch=args.samples_per_epoch,
     )
     
     model_module = DualEncoderModule(
@@ -57,6 +62,7 @@ def main():
         tabular_continuous_dim=15,
         embedding_dim=128,
         lr=args.lr,
+        warmup_epochs=args.warmup_epochs,
     )
     
     callbacks = [
