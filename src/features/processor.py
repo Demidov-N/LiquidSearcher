@@ -97,19 +97,25 @@ class FeatureProcessor:
         features_df = features_pl.to_pandas()
         
         # G1: Add pre-computed betas if available
-        if betas_df is not None:
+        if betas_df is not None and not betas_df.empty:
             logger.info("Merging pre-computed betas...")
             features_df = self._merge_betas(features_df, betas_df)
+        else:
+            logger.info("No beta data to merge, skipping...")
         
         # G4: Add fundamentals
-        if fundamentals_df is not None:
+        if fundamentals_df is not None and not fundamentals_df.empty:
             logger.info("Merging fundamentals...")
             features_df = self._merge_fundamentals(features_df, fundamentals_df)
+        else:
+            logger.info("No fundamental data to merge, skipping...")
         
         # G6: Add GICS codes
-        if gics_df is not None:
+        if gics_df is not None and not gics_df.empty:
             logger.info("Merging GICS codes...")
             features_df = self._merge_gics(features_df, gics_df)
+        else:
+            logger.info("No GICS data to merge, skipping...")
         
         return features_df
     
@@ -248,9 +254,17 @@ class FeatureProcessor:
         betas_df: pd.DataFrame
     ) -> pd.DataFrame:
         """Merge pre-computed betas into features."""
+        # Check if betas_df has the required columns
+        required_cols = ['symbol', 'date', 'beta', 'idiosyncratic_vol']
+        available_cols = [col for col in required_cols if col in betas_df.columns]
+        
+        if not available_cols:
+            logger.warning("Beta data missing required columns, skipping merge")
+            return features_df
+        
         # Merge on symbol and date
         merged = features_df.merge(
-            betas_df[['symbol', 'date', 'beta', 'idiosyncratic_vol']],
+            betas_df[available_cols],
             on=['symbol', 'date'],
             how='left'
         )
