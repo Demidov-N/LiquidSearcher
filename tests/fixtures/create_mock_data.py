@@ -162,8 +162,9 @@ def create_mock_features(
     macd, signal = compute_macd(close_prices)
 
     # Generate categorical features (constant per symbol)
+    # Use simple indices: gsector 0-10, ggroup 0-24
     gsector = np.random.randint(0, 11)
-    ggroup = gsector * 100 + np.random.randint(0, 26)
+    ggroup = np.random.randint(0, 25)
 
     # Generate continuous tabular features
     # These vary slightly over time but are relatively stable
