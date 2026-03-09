@@ -195,84 +195,46 @@ def get_index_constituents_from_wrds(loader, index_type: str) -> List[str]:
     """
     symbols = set()
     
-    if index_type in ['sp500', 'combined']:
-        # S&P 500 constituents
+    if index_type in ['sp500', 'russell2000', 'combined', 'all_crsp']:
+        # For all types, fetch from crsp.dsenames (simplest query)
+        # Filter by share code for common stocks
         try:
             query = """
                 SELECT DISTINCT ticker
-                FROM crsp.dsenames d
-                INNER JOIN crsp.dseexchcodes e ON d.permno = e.permno
-                WHERE e.exchcd IN (1, 2)  -- NYSE, AMEX
-                AND d.shrcd IN (10, 11)   -- Common shares
-                AND d.ticker IS NOT NULL
-                AND d.ticker != ''
-                ORDER BY d.ticker
-            """
-            df = loader.conn.raw_sql(query)
-            if not df.empty and 'ticker' in df.columns:
-                sp_symbols = df['ticker'].unique().tolist()
-                logger.info(f"Loaded {len(sp_symbols)} S&P 500 constituents")
-                symbols.update(sp_symbols)
-        except Exception as e:
-            logger.warning(f"Could not load S&P 500 constituents: {e}")
-    
-    if index_type in ['russell2000', 'combined']:
-        # Russell 2000 constituents (small-cap)
-        try:
-            # Russell 2000 constituents are in crsp.dsenames with specific criteria
-            # Small-cap: market cap between $300M and $2B (approximate)
-            query = """
-                SELECT DISTINCT ticker
-                FROM crsp.dsenames d
-                INNER JOIN crsp.dseexchcodes e ON d.permno = e.permno
-                WHERE e.exchcd IN (1, 2, 3)  -- NYSE, AMEX, NASDAQ
-                AND d.shrcd IN (10, 11)      -- Common shares
-                AND d.ticker IS NOT NULL
-                AND d.ticker != ''
-                AND d.permno NOT IN (
-                    -- Exclude large-cap (top 1000 by market cap)
-                    SELECT permno FROM (
-                        SELECT permno, SUM(abs(prc) * shrout) as mcap
-                        FROM crsp.dsf
-                        WHERE date >= CURRENT_DATE - INTERVAL '1 year'
-                        GROUP BY permno
-                        ORDER BY mcap DESC
-                        LIMIT 1000
-                    ) large
-                )
-                ORDER BY d.ticker
-            """
-            df = loader.conn.raw_sql(query)
-            if not df.empty and 'ticker' in df.columns:
-                rus_symbols = df['ticker'].unique().tolist()
-                logger.info(f"Loaded {len(rus_symbols)} Russell 2000 constituents")
-                symbols.update(rus_symbols)
-        except Exception as e:
-            logger.warning(f"Could not load Russell 2000 constituents: {e}")
-    
-    if index_type == 'all_crsp':
-        # All CRSP stocks with sufficient liquidity
-        try:
-            query = """
-                SELECT DISTINCT ticker
-                FROM crsp.dsenames d
-                INNER JOIN crsp.dseexchcodes e ON d.permno = e.permno
-                WHERE e.exchcd IN (1, 2, 3)  -- NYSE, AMEX, NASDAQ
-                AND d.shrcd IN (10, 11)      -- Common shares
-                AND d.ticker IS NOT NULL
-                AND d.ticker != ''
-                ORDER BY d.ticker
+                FROM crsp.dsenames
+                WHERE shrcd IN (10, 11)  -- Common shares only
+                AND ticker IS NOT NULL
+                AND ticker != ''
+                ORDER BY ticker
             """
             df = loader.conn.raw_sql(query)
             if not df.empty and 'ticker' in df.columns:
                 all_symbols = df['ticker'].unique().tolist()
-                logger.info(f"Loaded {len(all_symbols)} CRSP symbols")
+                logger.info(f"Loaded {len(all_symbols)} CRSP symbols from dsenames")
                 symbols.update(all_symbols)
         except Exception as e:
-            logger.warning(f"Could not load all CRSP symbols: {e}")
+            logger.warning(f"Could not load symbols from crsp.dsenames: {e}")
+            
+        # Alternative: try crsp.mseall if dsenames fails
+        if not symbols:
+            try:
+                query = """
+                    SELECT DISTINCT ticker
+                    FROM crsp.mseall
+                    WHERE ticker IS NOT NULL
+                    AND ticker != ''
+                    ORDER BY ticker
+                """
+                df = loader.conn.raw_sql(query)
+                if not df.empty and 'ticker' in df.columns:
+                    all_symbols = df['ticker'].unique().tolist()
+                    logger.info(f"Loaded {len(all_symbols)} CRSP symbols from mseall")
+                    symbols.update(all_symbols)
+            except Exception as e:
+                logger.warning(f"Could not load symbols from crsp.mseall: {e}")
     
     if not symbols:
-        logger.warning("No symbols loaded from WRDS indices")
+        logger.warning("No symbols loaded from WRDS - check table names in your account")
         return []
     
     result = sorted(list(symbols))
