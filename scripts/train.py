@@ -7,7 +7,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import (
     ModelCheckpoint,
     EarlyStopping,
-    LearningRateMonitor,
+    TQDMProgressBar,
 )
 from src.training.data_module import StockDataModule
 from src.training.module import DualEncoderModule
@@ -68,6 +68,7 @@ def main():
             save_top_k=3,
         ),
         EarlyStopping(monitor="val/loss", patience=15, mode="min"),
+        TQDMProgressBar(refresh_rate=10),
     ]
     
     trainer = pl.Trainer(
@@ -78,6 +79,7 @@ def main():
         devices="auto",
         gradient_clip_val=1.0,
         log_every_n_steps=50,
+        enable_progress_bar=True,
     )
     
     print("\nStarting training...")

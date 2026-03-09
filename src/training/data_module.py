@@ -11,6 +11,42 @@ from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
 
 
+# Feature name mappings for clarity
+TEMPORAL_FEATURE_NAMES = [
+    "z_close",           # 0: Price returns z-score
+    "z_volume",          # 1: Volume change z-score
+    "ma_ratio_5d",       # 2: Price / 5-day MA - 1
+    "ma_ratio_10d",      # 3: Price / 10-day MA - 1
+    "ma_ratio_20d",      # 4: Price / 20-day MA - 1
+    "realized_vol_20d",  # 5: 20-day annualized volatility
+    "realized_vol_60d",  # 6: 60-day annualized volatility
+    "mom_1m",            # 7: 1-month momentum
+    "mom_3m",            # 8: 3-month momentum
+    "mom_6m",            # 9: 6-month momentum
+    "mom_12m",           # 10: 12-month momentum
+    "mom_12_1m",         # 11: 12-month skip 1-month momentum
+    "log_ret_cum",       # 12: Cumulative log return
+]
+
+TABULAR_CONTINUOUS_NAMES = [
+    "beta",              # 0: Market beta (60-day)
+    "idiosyncratic_vol", # 1: Idiosyncratic volatility
+    "roe",               # 2: Return on equity
+    "roa",               # 3: Return on assets
+    "debt_to_equity",    # 4: Debt to equity ratio
+    "price_to_book",     # 5: Price to book
+    "price_to_earnings", # 6: Price to earnings
+    "market_cap",        # 7: Market cap
+    "dividend_yield",    # 8: Dividend yield
+    "revenue",           # 9: Revenue
+    "net_income",        # 10: Net income
+    "total_assets",      # 11: Total assets
+    "cash",              # 12: Cash
+    "operating_margin",  # 13: Operating margin
+    "profit_margin",     # 14: Profit margin
+]
+
+
 class StockDataset(Dataset):
     """Dataset for stock features with random window sampling."""
 
@@ -105,6 +141,11 @@ class StockDataset(Dataset):
         # Handle missing values
         tabular_cont = np.nan_to_num(tabular_cont, nan=0.0)
         tabular_cat = np.nan_to_num(tabular_cat, nan=0).astype(int)
+        
+        # Clamp categorical values to valid ranges for embedding layers
+        # gsector: 0-10 (11 categories), ggroup: 0-24 (25 categories)
+        tabular_cat[0] = np.clip(tabular_cat[0], 0, 10)
+        tabular_cat[1] = np.clip(tabular_cat[1], 0, 24)
 
         return {
             "symbol": symbol,
