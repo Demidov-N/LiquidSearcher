@@ -117,6 +117,14 @@ class FeatureProcessor:
         else:
             logger.info("No GICS data to merge, skipping...")
         
+        # G7: Compute local betas if WRDS Beta Suite not available
+        if betas_df is None or betas_df.empty:
+            logger.info("Computing betas locally from price data...")
+            # Re-convert to Polars for beta computation
+            features_pl = pl.from_pandas(features_df)
+            features_pl = self._compute_betas_polars(features_pl, window=60)
+            features_df = features_pl.to_pandas()
+        
         return features_df
     
     def _compute_ohlcv_features_polars(self, df: pl.DataFrame) -> pl.DataFrame:
@@ -224,6 +232,83 @@ class FeatureProcessor:
         df = df.with_columns([
             ((1 + pl.col('mom_12m')) / (1 + pl.col('mom_1m')) - 1).alias('mom_12_1m')
         ])
+        
+        return df
+    
+    def _compute_betas_polars(self, df: pl.DataFrame, window: int = 60) -> pl.DataFrame:
+        """Compute rolling market betas using OLS regression.
+        
+        Uses market excess return (VWRETD from CRSP) as market return proxy.
+        For individual stocks, computes beta = cov(stock_ret, market_ret) / var(market_ret)
+        
+        Args:
+            df: DataFrame with 'ret_1d' column and market returns
+            window: Rolling window in days (default 60)
+        
+        Returns:
+            DataFrame with 'beta' and 'idiosyncratic_vol' columns
+        """
+        # Compute rolling covariance and variance for beta calculation
+        # Beta = Cov(stock_ret, market_ret) / Var(market_ret)
+        # Since we don't have individual market returns per stock, we use:
+        # - Cross-sectional market return as proxy (mean return across all stocks)
+        
+        # Compute market return as cross-sectional mean
+        df = df.with_columns([
+            pl.col('ret_1d').mean().over('date').alias('market_ret_1d')
+        ])
+        
+        # Compute rolling means for covariance calculation
+        df = df.with_columns([
+            pl.col('ret_1d').rolling_mean(window_size=window, min_samples=window//2).over('symbol').alias('ret_mean'),
+            pl.col('market_ret_1d').rolling_mean(window_size=window, min_samples=window//2).over('symbol').alias('market_ret_mean')
+        ])
+        
+        # Compute deviations from mean
+        df = df.with_columns([
+            (pl.col('ret_1d') - pl.col('ret_mean')).alias('ret_dev'),
+            (pl.col('market_ret_1d') - pl.col('market_ret_mean')).alias('market_ret_dev')
+        ])
+        
+        # Compute rolling covariance and variance
+        df = df.with_columns([
+            (pl.col('ret_dev') * pl.col('market_ret_dev')).rolling_mean(window_size=window, min_samples=window//2).over('symbol').alias('cov_stock_market'),
+            (pl.col('market_ret_dev') * pl.col('market_ret_dev')).rolling_mean(window_size=window, min_samples=window//2).over('symbol').alias('var_market')
+        ])
+        
+        # Compute beta
+        df = df.with_columns([
+            (pl.col('cov_stock_market') / pl.col('var_market')).alias('beta_60d')
+        ])
+        
+        # Compute idiosyncratic volatility (residual volatility)
+        # Predicted return = beta * market_ret
+        df = df.with_columns([
+            (pl.col('beta_60d') * pl.col('market_ret_1d')).alias('predicted_ret')
+        ])
+        
+        # Residual = actual - predicted
+        df = df.with_columns([
+            (pl.col('ret_1d') - pl.col('predicted_ret')).alias('residual')
+        ])
+        
+        # Idiosyncratic volatility = std of residuals
+        df = df.with_columns([
+            pl.col('residual').rolling_std(window_size=window, min_samples=window//2).over('symbol').alias('idiosyncratic_vol')
+        ])
+        
+        # Annualize idiosyncratic volatility
+        df = df.with_columns([
+            (pl.col('idiosyncratic_vol') * np.sqrt(252)).alias('idiosyncratic_vol')
+        ])
+        
+        # Rename beta column to match expected naming
+        df = df.rename({'beta_60d': 'beta'})
+        
+        # Clean up intermediate columns
+        df = df.drop(['ret_mean', 'market_ret_mean', 'ret_dev', 'market_ret_dev', 
+                      'cov_stock_market', 'var_market', 'market_ret_1d',
+                      'predicted_ret', 'residual'])
         
         return df
     
