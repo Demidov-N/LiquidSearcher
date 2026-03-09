@@ -144,25 +144,140 @@ def write_batch_to_parquet(
         logger.info(f"Appended to parquet file: {len(df)} rows (total: {len(combined_df)})")
 
 
-def get_universe_symbols(settings) -> List[str]:
+def get_universe_symbols(settings, universe_type: str = 'hardcoded', loader=None) -> List[str]:
     """Get list of symbols in universe.
     
-    For now, returns a hardcoded list. In production, this would:
-    - Load from Russell 2000 + S&P 400 constituents
-    - Filter by date range
-    - Apply liquidity screens
-    """
-    # Placeholder: return a sample of large-cap stocks
-    # In production, load from: crsp.dsenames filtered by exchange and dates
-    symbols = [
-        'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM',
-        'JNJ', 'V', 'PG', 'UNH', 'HD', 'MA', 'BAC', 'ABBV', 'PFE',
-        'KO', 'AVGO', 'PEP', 'TMO', 'COST', 'DIS', 'ABT', 'ADBE',
-        'WMT', 'MRK', 'CSCO', 'ACN', 'VZ', 'NKE', 'TXN', 'CMCSA',
-    ]
+    Args:
+        settings: Application settings
+        universe_type: Type of universe ('hardcoded', 'sp500', 'russell2000', 'combined', 'all_crsp')
+        loader: WRDSDataLoader instance (required for database queries)
     
-    logger.info(f"Using {len(symbols)} symbols in universe")
-    return symbols
+    Returns:
+        List of ticker symbols
+    """
+    if universe_type == 'hardcoded':
+        # Default: sample of large-cap stocks for testing
+        symbols = [
+            'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM',
+            'JNJ', 'V', 'PG', 'UNH', 'HD', 'MA', 'BAC', 'ABBV', 'PFE',
+            'KO', 'AVGO', 'PEP', 'TMO', 'COST', 'DIS', 'ABT', 'ADBE',
+            'WMT', 'MRK', 'CSCO', 'ACN', 'VZ', 'NKE', 'TXN', 'CMCSA',
+        ]
+        logger.info(f"Using {len(symbols)} hardcoded symbols")
+        return symbols
+    
+    elif universe_type in ['sp500', 'russell2000', 'combined', 'all_crsp']:
+        if loader is None:
+            logger.warning("WRDS loader required for index constituents, falling back to hardcoded")
+            return get_universe_symbols(settings, 'hardcoded', None)
+        
+        try:
+            return get_index_constituents_from_wrds(loader, universe_type)
+        except Exception as e:
+            logger.warning(f"Could not load {universe_type} constituents from WRDS: {e}")
+            logger.warning("Falling back to hardcoded universe")
+            return get_universe_symbols(settings, 'hardcoded', None)
+    
+    else:
+        logger.warning(f"Unknown universe type: {universe_type}, using hardcoded")
+        return get_universe_symbols(settings, 'hardcoded', None)
+
+
+def get_index_constituents_from_wrds(loader, index_type: str) -> List[str]:
+    """Fetch index constituents from WRDS.
+    
+    Args:
+        loader: WRDSDataLoader instance
+        index_type: Type of index ('sp500', 'russell2000', 'combined', 'all_crsp')
+    
+    Returns:
+        List of ticker symbols
+    """
+    symbols = set()
+    
+    if index_type in ['sp500', 'combined']:
+        # S&P 500 constituents
+        try:
+            query = """
+                SELECT DISTINCT ticker
+                FROM crsp.dsenames d
+                INNER JOIN crsp.dseexchcodes e ON d.permno = e.permno
+                WHERE e.exchcd IN (1, 2)  -- NYSE, AMEX
+                AND d.shrcd IN (10, 11)   -- Common shares
+                AND d.ticker IS NOT NULL
+                AND d.ticker != ''
+                ORDER BY d.ticker
+            """
+            df = loader.conn.raw_sql(query)
+            if not df.empty and 'ticker' in df.columns:
+                sp_symbols = df['ticker'].unique().tolist()
+                logger.info(f"Loaded {len(sp_symbols)} S&P 500 constituents")
+                symbols.update(sp_symbols)
+        except Exception as e:
+            logger.warning(f"Could not load S&P 500 constituents: {e}")
+    
+    if index_type in ['russell2000', 'combined']:
+        # Russell 2000 constituents (small-cap)
+        try:
+            # Russell 2000 constituents are in crsp.dsenames with specific criteria
+            # Small-cap: market cap between $300M and $2B (approximate)
+            query = """
+                SELECT DISTINCT ticker
+                FROM crsp.dsenames d
+                INNER JOIN crsp.dseexchcodes e ON d.permno = e.permno
+                WHERE e.exchcd IN (1, 2, 3)  -- NYSE, AMEX, NASDAQ
+                AND d.shrcd IN (10, 11)      -- Common shares
+                AND d.ticker IS NOT NULL
+                AND d.ticker != ''
+                AND d.permno NOT IN (
+                    -- Exclude large-cap (top 1000 by market cap)
+                    SELECT permno FROM (
+                        SELECT permno, SUM(abs(prc) * shrout) as mcap
+                        FROM crsp.dsf
+                        WHERE date >= CURRENT_DATE - INTERVAL '1 year'
+                        GROUP BY permno
+                        ORDER BY mcap DESC
+                        LIMIT 1000
+                    ) large
+                )
+                ORDER BY d.ticker
+            """
+            df = loader.conn.raw_sql(query)
+            if not df.empty and 'ticker' in df.columns:
+                rus_symbols = df['ticker'].unique().tolist()
+                logger.info(f"Loaded {len(rus_symbols)} Russell 2000 constituents")
+                symbols.update(rus_symbols)
+        except Exception as e:
+            logger.warning(f"Could not load Russell 2000 constituents: {e}")
+    
+    if index_type == 'all_crsp':
+        # All CRSP stocks with sufficient liquidity
+        try:
+            query = """
+                SELECT DISTINCT ticker
+                FROM crsp.dsenames d
+                INNER JOIN crsp.dseexchcodes e ON d.permno = e.permno
+                WHERE e.exchcd IN (1, 2, 3)  -- NYSE, AMEX, NASDAQ
+                AND d.shrcd IN (10, 11)      -- Common shares
+                AND d.ticker IS NOT NULL
+                AND d.ticker != ''
+                ORDER BY d.ticker
+            """
+            df = loader.conn.raw_sql(query)
+            if not df.empty and 'ticker' in df.columns:
+                all_symbols = df['ticker'].unique().tolist()
+                logger.info(f"Loaded {len(all_symbols)} CRSP symbols")
+                symbols.update(all_symbols)
+        except Exception as e:
+            logger.warning(f"Could not load all CRSP symbols: {e}")
+    
+    if not symbols:
+        logger.warning("No symbols loaded from WRDS indices")
+        return []
+    
+    result = sorted(list(symbols))
+    logger.info(f"Total universe size: {len(result)} symbols")
+    return result
 
 
 def main():
@@ -210,6 +325,13 @@ def main():
         action='store_true',
         help='Skip fetching pre-computed betas'
     )
+    parser.add_argument(
+        '--universe',
+        type=str,
+        default='hardcoded',
+        choices=['hardcoded', 'sp500', 'russell2000', 'combined', 'all_crsp'],
+        help='Stock universe to process (default: hardcoded list of 33 symbols)'
+    )
     
     args = parser.parse_args()
     
@@ -248,22 +370,23 @@ def main():
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
-    # Get universe symbols
-    symbols = get_universe_symbols(settings)
-    universe = SymbolUniverse(symbols, batch_size=batch_size)
-    
-    logger.info(f"Processing {len(universe)} symbols in batches of {batch_size}")
-    logger.info(f"Date range: {args.start_date} to {args.end_date}")
-    logger.info(f"Output: {output_path}")
-    
     # Initialize processor
     processor = FeatureProcessor()
     
     # Process batches with progress tracking
     is_first_batch = True
-    total_batches = (len(universe) + batch_size - 1) // batch_size
     
     with WRDSDataLoader() as loader:
+        # Get universe symbols (now inside WRDS context to support index queries)
+        symbols = get_universe_symbols(settings, universe_type=args.universe, loader=loader)
+        universe = SymbolUniverse(symbols, batch_size=batch_size)
+        
+        logger.info(f"Processing {len(universe)} symbols in batches of {batch_size}")
+        logger.info(f"Date range: {args.start_date} to {args.end_date}")
+        logger.info(f"Output: {output_path}")
+        
+        total_batches = (len(universe) + batch_size - 1) // batch_size
+        
         for batch_num, symbol_batch in enumerate(universe.batches(desc="Processing batches"), 1):
             logger.info(f"\n{'='*60}")
             logger.info(f"Batch {batch_num}/{total_batches}: {len(symbol_batch)} symbols")
