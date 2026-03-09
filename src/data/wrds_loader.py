@@ -91,7 +91,8 @@ class WRDSDataLoader:
     ) -> pd.DataFrame:
         """Fetch pre-computed rolling betas from WRDS Beta Suite.
 
-        Uses wrds.beta library for efficient beta retrieval.
+        NOTE: This requires access to WRDS Beta Suite. If not available,
+        betas will be computed locally from returns.
 
         Args:
             symbols: List of ticker symbols
@@ -101,26 +102,40 @@ class WRDSDataLoader:
 
         Returns:
             DataFrame with columns: permno, date, beta, idio_vol, total_vol
+            or empty DataFrame if Beta Suite not available
         """
-        permnos = self._symbols_to_permnos(symbols)
+        # Try WRDS Beta Suite first
+        try:
+            permnos = self._symbols_to_permnos(symbols)
+            if not permnos:
+                return pd.DataFrame()
 
-        if not permnos:
+            permno_list = ",".join(map(str, permnos))
+            
+            # Try different possible table names
+            for table_name in ["wrds.beta", "betas.beta", "crsp.beta"]:
+                try:
+                    query = f"""
+                        SELECT permno, date, beta, idiovol, totalvol
+                        FROM {table_name}
+                        WHERE permno IN ({permno_list})
+                        AND date BETWEEN '{start_date}' AND '{end_date}'
+                        AND "window" = {window}
+                        ORDER BY permno, date
+                    """
+                    df = self.conn.raw_sql(query)
+                    if not df.empty:
+                        df = df.rename(columns={"idiovol": "idiosyncratic_vol", "totalvol": "total_volatility"})
+                        return self._add_ticker_symbols(df)
+                except Exception:
+                    continue
+                    
+            logger.warning("WRDS Beta Suite not available, will compute betas locally")
             return pd.DataFrame()
-
-        permno_list = ",".join(map(str, permnos))
-        query = f"""
-            SELECT permno, date, beta, idiovol, totalvol
-            FROM wrds.beta
-            WHERE permno IN ({permno_list})
-            AND date BETWEEN '{start_date}' AND '{end_date}'
-            AND "window" = {window}
-            ORDER BY permno, date
-        """
-
-        df = self.conn.raw_sql(query)
-        df = df.rename(columns={"idiovol": "idiosyncratic_vol", "totalvol": "total_volatility"})
-
-        return self._add_ticker_symbols(df)
+            
+        except Exception as e:
+            logger.warning(f"Could not fetch pre-computed betas: {e}")
+            return pd.DataFrame()
 
     def fetch_fundamentals_batch(
         self,
@@ -141,27 +156,32 @@ class WRDSDataLoader:
         Returns:
             DataFrame with columns: gvkey, rdq, atq, seq, niq, cshoq, prccq, etc.
         """
-        # Get GVKEYs from ticker symbols
-        gvkeys = self._symbols_to_gvkeys(symbols)
+        try:
+            # Get GVKEYs from ticker symbols
+            gvkeys = self._symbols_to_gvkeys(symbols)
 
-        if not gvkeys:
+            if not gvkeys:
+                logger.warning("No GVKEYs found for symbols, cannot fetch fundamentals")
+                return pd.DataFrame()
+
+            gvkey_list = "','".join(gvkeys)
+            query = f"""
+                SELECT gvkey, rdq, atq, seq, niq, cshoq, prccq,
+                       epspxq, opepsq, ceqq, txtq, xintq
+                FROM comp.fundq
+                WHERE gvkey IN ('{gvkey_list}')
+                AND rdq BETWEEN '{start_date}' AND '{end_date}'
+                AND indfmt = 'INDL'
+                AND datafmt = 'STD'
+                AND popsrc = 'D'
+                ORDER BY gvkey, rdq
+            """
+
+            df = self.conn.raw_sql(query)
+            return self._add_ticker_symbols(df)
+        except Exception as e:
+            logger.warning(f"Could not fetch fundamentals: {e}")
             return pd.DataFrame()
-
-        gvkey_list = "','".join(gvkeys)
-        query = f"""
-            SELECT gvkey, rdq, atq, seq, niq, cshoq, prccq,
-                   epspxq, opepsq, ceqq, txtq, xintq
-            FROM comp.fundq
-            WHERE gvkey IN ('{gvkey_list}')
-            AND rdq BETWEEN '{start_date}' AND '{end_date}'
-            AND indfmt = 'INDL'
-            AND datafmt = 'STD'
-            AND popsrc = 'D'
-            ORDER BY gvkey, rdq
-        """
-
-        df = self.conn.raw_sql(query)
-        return self._add_ticker_symbols(df)
 
     def fetch_gics_codes(
         self,
@@ -175,20 +195,35 @@ class WRDSDataLoader:
         Returns:
             DataFrame with columns: gvkey, gsector, ggroup, gind, gsubind
         """
-        gvkeys = self._symbols_to_gvkeys(symbols)
+        try:
+            gvkeys = self._symbols_to_gvkeys(symbols)
 
-        if not gvkeys:
+            if not gvkeys:
+                logger.warning("No GVKEYs found for symbols, cannot fetch GICS codes")
+                return pd.DataFrame()
+
+            gvkey_list = "','".join(gvkeys)
+            
+            # Try different possible table names for GICS data
+            for table_name in ["comp.company", "comp.names", "comp.gics"]:
+                try:
+                    query = f"""
+                        SELECT gvkey, gsector, ggroup, gind, gsubind
+                        FROM {table_name}
+                        WHERE gvkey IN ('{gvkey_list}')
+                    """
+                    df = self.conn.raw_sql(query)
+                    if not df.empty:
+                        return self._add_ticker_symbols(df)
+                except Exception:
+                    continue
+            
+            logger.warning("Could not fetch GICS codes from any table")
             return pd.DataFrame()
-
-        gvkey_list = "','".join(gvkeys)
-        query = f"""
-            SELECT gvkey, gsector, ggroup, gind, gsubind
-            FROM comp.company
-            WHERE gvkey IN ('{gvkey_list}')
-        """
-
-        df = self.conn.raw_sql(query)
-        return self._add_ticker_symbols(df)
+            
+        except Exception as e:
+            logger.warning(f"Could not fetch GICS codes: {e}")
+            return pd.DataFrame()
 
     def _symbols_to_permnos(self, symbols: list[str]) -> list[int]:
         """Convert ticker symbols to CRSP PERMNOs."""
@@ -202,15 +237,47 @@ class WRDSDataLoader:
         return df["permno"].tolist()
 
     def _symbols_to_gvkeys(self, symbols: list[str]) -> list[str]:
-        """Convert ticker symbols to Compustat GVKEYs."""
-        symbol_list = "','".join(symbols)
-        query = f"""
-            SELECT DISTINCT gvkey, tic
-            FROM comp.company
-            WHERE tic IN ('{symbol_list}')
+        """Convert ticker symbols to Compustat GVKEYs.
+        
+        Uses comp.names table which has the ticker-to-gvkey mapping.
+        Falls back to CRSP-Compustat link table if needed.
         """
-        df = self.conn.raw_sql(query)
-        return df["gvkey"].tolist()
+        symbol_list = "','".join(symbols)
+        
+        # Try comp.names table first (most common location for ticker mapping)
+        try:
+            query = f"""
+                SELECT DISTINCT gvkey, ticker
+                FROM comp.names
+                WHERE ticker IN ('{symbol_list}')
+            """
+            df = self.conn.raw_sql(query)
+            if not df.empty:
+                return df["gvkey"].tolist()
+        except Exception:
+            pass
+        
+        # Try CRSP-Compustat link table as fallback
+        try:
+            permnos = self._symbols_to_permnos(symbols)
+            if permnos:
+                permno_list = ",".join(map(str, permnos))
+                query = f"""
+                    SELECT DISTINCT gvkey, permno
+                    FROM crsp.ccmxpf_lnkhist
+                    WHERE permno IN ({permno_list})
+                    AND linktype IN ('LC', 'LU')
+                    AND linkprim IN ('P', 'C')
+                """
+                df = self.conn.raw_sql(query)
+                if not df.empty:
+                    return df["gvkey"].tolist()
+        except Exception:
+            pass
+        
+        # If all methods fail, return empty list
+        logger.warning(f"Could not map symbols to GVKEYs: {symbols[:5]}...")
+        return []
 
     def _add_ticker_symbols(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add ticker symbols to DataFrame based on permno.
