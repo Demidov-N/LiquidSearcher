@@ -1,12 +1,12 @@
 """Feature engineering modules."""
 
-from src.features.normalization import (
+from liquid_searcher.features.normalization import (
     winsorize,
     cross_sectional_zscore,
     rank_normalize,
     two_pass_normalization,
 )
-from src.features.processor import FeatureProcessor
+from liquid_searcher.features.processor import FeatureProcessor
 
 __all__ = [
     "winsorize",

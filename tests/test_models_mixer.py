@@ -1,7 +1,7 @@
 """Tests for TabMixer."""
 
 import torch
-from src.models.mixer import MixerBlock, TabMixer
+from liquid_searcher.models.mixer import MixerBlock, TabMixer
 
 
 def test_mixer_block_shape():

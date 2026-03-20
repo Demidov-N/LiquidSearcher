@@ -2,7 +2,7 @@
 
 import pytest
 import torch
-from src.models.base import BaseEncoder
+from liquid_searcher.models.base import BaseEncoder
 
 
 def test_base_encoder_is_abstract():

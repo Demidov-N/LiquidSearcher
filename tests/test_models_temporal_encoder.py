@@ -1,7 +1,7 @@
 """Tests for BiMT-TCN temporal encoder."""
 
 import torch
-from src.models.temporal_encoder import TemporalEncoder
+from liquid_searcher.models.temporal_encoder import TemporalEncoder
 
 
 def test_output_shape():
@@ -44,7 +44,7 @@ def test_different_sequence_lengths():
 
 def test_inherits_base():
     """Test that it inherits from BaseEncoder."""
-    from src.models.base import BaseEncoder
+    from liquid_searcher.models.base import BaseEncoder
     encoder = TemporalEncoder()
     assert isinstance(encoder, BaseEncoder)
     assert encoder.output_dim == 128

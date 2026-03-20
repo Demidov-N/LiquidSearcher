@@ -7,7 +7,7 @@ import numpy as np
 import polars as pl
 import pandas as pd
 
-from src.features.normalization import two_pass_normalization
+from liquid_searcher.features.normalization import two_pass_normalization
 
 logger = logging.getLogger(__name__)
 

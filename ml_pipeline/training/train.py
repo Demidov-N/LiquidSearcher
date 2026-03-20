@@ -12,8 +12,8 @@ from pytorch_lightning.callbacks import (
     TQDMProgressBar,
 )
 from pytorch_lightning.loggers import CSVLogger
-from src.training.data_module import StockDataModule
-from src.training.module import DualEncoderModule
+from liquid_searcher.training.data_module import StockDataModule
+from liquid_searcher.training.module import DualEncoderModule
 
 
 def parse_args():

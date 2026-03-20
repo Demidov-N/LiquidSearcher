@@ -1,0 +1,127 @@
+# Data configuration
+data:
+  symbols: ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA"]
+  start_date: "2020-01-01"
+  end_date: "2023-12-31"
+  base_path: "data"
+  raw_path: "data/raw"
+  processed_path: "data/processed"
+  cache_dir: null  # Optional: WRDS cache directory
+  
+  # Data module configuration
+  data_module_kwargs:
+    train_split: 0.7
+    val_split: 0.15
+    sequence_length: 60
+
+# Feature engineering configuration
+features:
+  lookback_days: 60
+  min_samples: 1000
+  
+  # Feature categories to compute
+  categories:
+    ohlcv: true
+    momentum: true
+    risk: true
+    valuation: true
+  
+  # Normalization settings
+  normalization:
+    winsorize_lower: 0.01
+    winsorize_upper: 0.99
+    cross_sectional_zscore: true
+    rank_normalize: true
+
+# Model architecture configuration
+model:
+  # Temporal encoder (BiMT-TCN)
+  temporal:
+    input_channels: 13  # OHLCV + volume + features
+    num_channels: [64, 64, 128, 128]
+    kernel_size: 3
+    dropout: 0.2
+    output_dim: 128
+  
+  # Tabular encoder (TabMixer)
+  tabular:
+    continuous_dim: 15
+    categorical_dims: [11, 25]  # gsector, ggroup
+    embedding_dims: [8, 16]   # gsector→8, ggroup→16
+    hidden_dim: 128
+    output_dim: 128
+    num_layers: 3
+    dropout: 0.1
+  
+  # Dual encoder
+  dual_encoder:
+    temperature: 0.07
+    normalize_features: true
+
+# Training configuration
+training:
+  # Training parameters
+  max_epochs: 100
+  batch_size: 32
+  learning_rate: 1e-4
+  weight_decay: 1e-5
+  
+  # Scheduler
+  scheduler:
+    type: "cosine"
+    warmup_epochs: 10
+    eta_min: 1e-6
+  
+  # Early stopping
+  early_stopping_patience: 15
+  
+  # Model checkpointing
+  save_top_k: 3
+  checkpoints_dir: "checkpoints"
+  
+  # Logging
+  log_every_n_steps: 50
+  val_check_interval: 1.0
+  
+  # PyTorch Lightning trainer kwargs
+  trainer_kwargs:
+    accelerator: "auto"
+    devices: "auto"
+    precision: "16-mixed"
+    gradient_clip_val: 1.0
+  
+  # Data loader
+  num_workers: 4
+
+# Evaluation configuration
+evaluation:
+  metrics:
+    - "accuracy"
+    - "precision"
+    - "recall"
+    - "f1"
+    - "auc"
+  
+  # Evaluation splits
+  test_split: 0.15
+  
+  # Benchmark comparisons
+  benchmarks:
+    - "random"
+    - "most_similar_sector"
+    - "fundamental_similarity"
+
+# Experiment tracking
+experiment:
+  name: "liquidSearcher"
+  tags: ["dual-encoder", "contrastive-learning", "financial-ml"]
+  
+  # MLflow tracking (optional)
+  mlflow:
+    experiment_name: "LiquidSearcher"
+    tracking_uri: null  # Uses default local
+  
+  # Weights & Biases (optional)
+  wandb:
+    project: "liquid-searcher"
+    entity: null

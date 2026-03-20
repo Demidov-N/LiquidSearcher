@@ -1,0 +1,47 @@
+stages:
+  data_ingestion:
+    cmd: python -m ml_pipeline.data_ingestion.shard_by_symbol --config configs/params.yaml
+    deps:
+    - ml_pipeline/data_ingestion/
+    - configs/params.yaml
+    outs:
+    - data/raw/
+    desc: "Load raw WRDS data and save by symbol"
+
+  feature_engineering:
+    cmd: python -m ml_pipeline.feature_engineering.preprocess_features --config configs/params.yaml
+    deps:
+    - data/raw/
+    - ml_pipeline/feature_engineering/
+    - configs/params.yaml
+    outs:
+    - data/processed/
+    desc: "Engineer features from raw data"
+
+  training:
+    cmd: python -m ml_pipeline.training.train --config configs/params.yaml
+    deps:
+    - data/processed/
+    - ml_pipeline/training/
+    - src/liquid_searcher/
+    - configs/params.yaml
+    outs:
+    - checkpoints/
+    - experiments/
+    metrics:
+    - experiments/metrics.json
+    desc: "Train dual-encoder model with experiment tracking"
+
+  evaluation:
+    cmd: python -m ml_pipeline.evaluation.validate --config configs/params.yaml
+    deps:
+    - checkpoints/
+    - ml_pipeline/evaluation/
+    - configs/params.yaml
+    outs:
+    - results/
+    metrics:
+    - results/evaluation_metrics.json
+    plots:
+    - results/plots/
+    desc: "Comprehensive model evaluation and benchmarking"

@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import pytest
 
-from src.features.normalization import (
+from liquid_searcher.features.normalization import (
     winsorize,
     cross_sectional_zscore,
     rank_normalize,

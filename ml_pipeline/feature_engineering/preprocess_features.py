@@ -22,12 +22,12 @@ from typing import List, Optional
 import pandas as pd
 import polars as pl
 
-from src.config.settings import get_settings
-from src.data.credentials import validate_and_exit
-from src.data.universe import SymbolUniverse
-from src.data.wrds_loader import WRDSDataLoader
-from src.features.processor import FeatureProcessor
-from src.utils.memory import get_recommended_batch_size, print_memory_status
+from liquid_searcher.config.settings import get_settings
+from liquid_searcher.data.credentials import validate_and_exit
+from liquid_searcher.data.universe import SymbolUniverse
+from liquid_searcher.data.wrds_loader import WRDSDataLoader
+from liquid_searcher.features.processor import FeatureProcessor
+from liquid_searcher.utils.memory import get_recommended_batch_size, print_memory_status
 
 logging.basicConfig(
     level=logging.INFO,

@@ -1,7 +1,7 @@
 """Tests for tabular encoder."""
 
 import torch
-from src.models.tabular_encoder import TabularEncoder
+from liquid_searcher.models.tabular_encoder import TabularEncoder
 
 
 def test_basic_forward():
@@ -34,7 +34,7 @@ def test_gics_embeddings():
 
 def test_inherits_base():
     """Test inheritance from BaseEncoder."""
-    from src.models.base import BaseEncoder
+    from liquid_searcher.models.base import BaseEncoder
     encoder = TabularEncoder()
     assert isinstance(encoder, BaseEncoder)
     assert encoder.input_dim == 39  # 15 + 8 + 16

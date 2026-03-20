@@ -1,7 +1,7 @@
 """Tests for symbol universe management."""
 
 import pytest
-from src.data.universe import SymbolUniverse
+from liquid_searcher.data.universe import SymbolUniverse
 
 
 class TestSymbolUniverse:

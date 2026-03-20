@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import pytest
 
-from src.features.processor import FeatureProcessor
+from liquid_searcher.features.processor import FeatureProcessor
 
 
 class TestFeatureProcessor:

@@ -1,7 +1,7 @@
 """Tests for dual encoder system."""
 
 import torch
-from src.models.dual_encoder import DualEncoder
+from liquid_searcher.models.dual_encoder import DualEncoder
 
 
 def test_training_mode():

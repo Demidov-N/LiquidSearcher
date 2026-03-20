@@ -7,9 +7,9 @@ import os
 os.environ['WRDS_USERNAME'] = 'niknatan'
 os.environ['WRDS_PASSWORD'] = 'Nikita201001!'
 
-from src.data.wrds_loader import WRDSDataLoader
-from src.features.processor import FeatureProcessor
-from src.data.universe import SymbolUniverse
+from liquid_searcher.data.wrds_loader import WRDSDataLoader
+from liquid_searcher.features.processor import FeatureProcessor
+from liquid_searcher.data.universe import SymbolUniverse
 import pandas as pd
 from pathlib import Path
 import logging

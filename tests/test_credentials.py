@@ -4,7 +4,7 @@ import os
 import pytest
 from unittest.mock import patch
 
-from src.data.credentials import check_wrds_credentials, validate_and_exit
+from liquid_searcher.data.credentials import check_wrds_credentials, validate_and_exit
 
 
 class TestCredentialValidation:

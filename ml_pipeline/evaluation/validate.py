@@ -26,8 +26,8 @@ import torch
 from sklearn.metrics import silhouette_score
 from torch.utils.data import DataLoader
 
-from src.training.data_module import StockDataset
-from src.training.module import DualEncoderModule
+from liquid_searcher.training.data_module import StockDataset
+from liquid_searcher.training.module import DualEncoderModule
 
 
 def parse_args():

@@ -3,7 +3,7 @@
 import pytest
 import torch
 import pytorch_lightning as pl
-from src.training.module import DualEncoderModule
+from liquid_searcher.training.module import DualEncoderModule
 
 
 def test_module_initialization():

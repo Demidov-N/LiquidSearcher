@@ -65,7 +65,7 @@ def check_shard_dir(feature_dir: str):
 
 def check_parquet_schema(feature_dir: str):
     import pyarrow.parquet as pq
-    from src.training.data_module import TEMPORAL_FEATURE_NAMES, TABULAR_CONTINUOUS_NAMES
+    from liquid_searcher.training.data_module import TEMPORAL_FEATURE_NAMES, TABULAR_CONTINUOUS_NAMES
     files = sorted(Path(feature_dir).glob("*_features.parquet"))
     schema = pq.read_schema(str(files[0]))
     cols = set(schema.names)
@@ -93,7 +93,7 @@ def check_date_range(feature_dir: str, train_start: str, train_end: str,
 
 def check_dataset_build(feature_dir: str, train_start: str, train_end: str,
                         val_start: str, val_end: str):
-    from src.training.data_module import StockDataset
+    from liquid_searcher.training.data_module import StockDataset
     train_ds = StockDataset(
         feature_dir=feature_dir,
         date_range=(train_start, train_end),
@@ -110,7 +110,7 @@ def check_dataset_build(feature_dir: str, train_start: str, train_end: str,
 
 
 def check_single_sample(feature_dir: str, train_start: str, train_end: str):
-    from src.training.data_module import StockDataset, TEMPORAL_FEATURE_NAMES, TABULAR_CONTINUOUS_NAMES
+    from liquid_searcher.training.data_module import StockDataset, TEMPORAL_FEATURE_NAMES, TABULAR_CONTINUOUS_NAMES
     ds = StockDataset(feature_dir=feature_dir, date_range=(train_start, train_end))
     sample = ds[0]
 
@@ -136,7 +136,7 @@ def check_single_sample(feature_dir: str, train_start: str, train_end: str):
 
 def check_dataloader(feature_dir: str, train_start: str, train_end: str,
                      val_start: str, val_end: str):
-    from src.training.data_module import StockDataModule
+    from liquid_searcher.training.data_module import StockDataModule
     dm = StockDataModule(
         feature_dir=feature_dir,
         train_start=train_start,
@@ -168,8 +168,8 @@ def check_dataloader(feature_dir: str, train_start: str, train_end: str,
 
 def check_forward_pass(feature_dir: str, train_start: str, train_end: str,
                        val_start: str, val_end: str):
-    from src.training.data_module import StockDataModule
-    from src.training.module import DualEncoderModule
+    from liquid_searcher.training.data_module import StockDataModule
+    from liquid_searcher.training.module import DualEncoderModule
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -218,8 +218,8 @@ def check_forward_pass(feature_dir: str, train_start: str, train_end: str,
 
 def check_loss(feature_dir: str, train_start: str, train_end: str,
                val_start: str, val_end: str):
-    from src.training.data_module import StockDataModule
-    from src.training.module import DualEncoderModule
+    from liquid_searcher.training.data_module import StockDataModule
+    from liquid_searcher.training.module import DualEncoderModule
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -279,8 +279,8 @@ def check_gpu():
 def check_gradient_flow(feature_dir: str, train_start: str, train_end: str,
                         val_start: str, val_end: str):
     """Verify gradients flow through both towers."""
-    from src.training.data_module import StockDataModule
-    from src.training.module import DualEncoderModule
+    from liquid_searcher.training.data_module import StockDataModule
+    from liquid_searcher.training.module import DualEncoderModule
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 

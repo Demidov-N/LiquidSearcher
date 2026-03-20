@@ -1,7 +1,7 @@
 """Tests for TCN module."""
 
 import torch
-from src.models.tcn import TemporalConvNet
+from liquid_searcher.models.tcn import TemporalConvNet
 
 
 def test_tcn_output_shape():
