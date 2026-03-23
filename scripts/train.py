@@ -113,6 +113,7 @@ def main():
 
     # CSV Logger for metrics
     csv_logger = CSVLogger(logs_dir, name="", version=0)
+//logs/dual_encoder_20260309_215706/
 
     trainer = pl.Trainer(
         max_epochs=args.epochs,
